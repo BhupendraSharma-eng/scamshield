@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+pydantic-settings
+httpx
+torch
+transformers
+optimum[onnxruntime]
+huggingface_hub
+tldextract
+rapidfuzz
+idna
+beautifulsoup4
+aiosqlite
+typesafe-sdk
+python-multipart
