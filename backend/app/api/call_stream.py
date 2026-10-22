@@ -348,7 +348,8 @@ def _timed_p_fake(samples: np.ndarray, sr: int) -> tuple[float | None, float]:
     return score, _ms(started)
 
 
-async def _handle_chunk(session_id: str, data: bytes, seq: int | None, filename: str) -> CallUpdate:
+async def _handle_chunk(session_id: str, data: bytes, seq: int | None, filename: str,
+                        transcribed_text: str | None = None, transcription_ms: float = 0) -> CallUpdate:
     session = sessions.get(session_id)
     if session is None:
         raise HTTPException(404, "Call session not found.")
@@ -357,7 +358,7 @@ async def _handle_chunk(session_id: str, data: bytes, seq: int | None, filename:
         lock = asyncio.Lock()
         session["lock"] = lock
     async with lock:
-        return await _score_chunk(session_id, session, data, seq, filename)
+        return await _score_chunk(session_id, session, data, seq, filename, transcribed_text, transcription_ms)
 
 
 async def _score_chunk(
@@ -366,6 +367,8 @@ async def _score_chunk(
     data: bytes,
     seq: int | None,
     filename: str,
+    transcribed_text: str | None = None,
+    transcription_ms: float = 0,
 ) -> CallUpdate:
     started = time.perf_counter()
     loaded = _load_wave(data)
@@ -375,8 +378,13 @@ async def _score_chunk(
     if seq is None:
         seq = len(session["chunks"]) + 1
 
+    async def transcript_result():
+        if transcribed_text is not None:
+            return transcribed_text, transcription_ms
+        return await _timed_stt(data, filename)
+
     (text, stt_ms), (chunk_p, fake_ms) = await asyncio.gather(
-        _timed_stt(data, filename),
+        transcript_result(),
         asyncio.to_thread(_timed_p_fake, samples, sr),
     )
     piece = text.strip()
@@ -401,7 +409,7 @@ async def _score_chunk(
             piece,
             transcript,
             deepfake,
-            LatencyMs(stt=stt_ms, decision=0, deepfake=fake_ms, total=_ms(started)),
+            LatencyMs(stt=stt_ms, decision=0, deepfake=fake_ms, total=_ms(started) + (transcription_ms if transcribed_text is not None else 0)),
         )
         session["last"] = update
         return update
@@ -415,6 +423,7 @@ async def _score_chunk(
             urls=extract_urls(transcript[-1500:]),
         ),
         use_cache=False,
+        decision_timeout_s=settings.call_decision_timeout_s,
     )
     decision_ms = _ms(decision_started)
     reasons = [str(item) for item in result.get("reasons") or [] if item]
@@ -443,7 +452,7 @@ async def _score_chunk(
         deepfake=deepfake,
         alert=alert,
         action=action,
-        latency_ms=LatencyMs(stt=stt_ms, decision=decision_ms, deepfake=fake_ms, total=_ms(started)),
+        latency_ms=LatencyMs(stt=stt_ms, decision=decision_ms, deepfake=fake_ms, total=_ms(started) + (transcription_ms if transcribed_text is not None else 0)),
     )
     session["last"] = update
     return update
@@ -455,17 +464,33 @@ async def create_session(req: SessionRequest | None = None) -> dict[str, str]:
     return {"session_id": _create_session(number)}
 
 
+@router.post("/call/session/{session_id}/transcribe")
+async def transcribe_chunk(session_id: str, file: UploadFile = File(...)) -> dict[str, Any]:
+    """Prepare speech concurrently; the client submits prepared chunks in capture order."""
+    _purge()
+    if session_id not in sessions:
+        raise HTTPException(404, "Call session not found.")
+    data = await _read_upload(file)
+    if _load_wave(data) is None:
+        raise HTTPException(415, "Chunk must be a PCM16 WAV file.")
+    text, elapsed = await _timed_stt(data, file.filename or "chunk.wav")
+    return {"text": text, "latency_ms": elapsed}
+
+
 @router.post("/call/session/{session_id}/chunk")
 async def post_chunk(
     session_id: str,
     file: UploadFile = File(...),
     seq: int | None = Form(default=None),
+    transcribed_text: str | None = Form(default=None, max_length=12000),
+    transcription_ms: float = Form(default=0, ge=0, le=120000),
+    transcription_prepared: bool = Form(default=False),
 ) -> CallUpdate:
     _purge()
     if session_id not in sessions:
         raise HTTPException(404, "Call session not found.")
     data = await _read_upload(file)
-    return await _handle_chunk(session_id, data, seq, file.filename or "chunk.wav")
+    return await _handle_chunk(session_id, data, seq, file.filename or "chunk.wav", (transcribed_text or "") if transcription_prepared else None, transcription_ms)
 
 
 @router.post("/call/session/{session_id}/end")

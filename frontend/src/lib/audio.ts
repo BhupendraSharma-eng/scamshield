@@ -1,5 +1,5 @@
 const TARGET_SAMPLE_RATE = 16_000;
-const CHUNK_SECONDS = 4;
+const CHUNK_SECONDS = 3;
 
 export interface MicCapture {
   stop: () => Promise<void>;

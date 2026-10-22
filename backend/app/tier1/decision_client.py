@@ -7,6 +7,7 @@ Both answer the same provider-neutral question set (questions.py) and map to Dec
 """
 
 import logging
+import math
 import time
 from typing import Any
 
@@ -38,6 +39,9 @@ class DecisionResult(BaseModel):
     payment_change: float | None = None
     refused: list[str] = []
     latency_ms: float
+    server_processing_ms: float | None = None
+    request_overhead_ms: float | None = None
+    request_id: str | None = None
     evidence: list[Evidence] = []
 
 
@@ -90,6 +94,8 @@ class DecisionClient:
                 base_url=settings.openai_base_url,
                 headers={"Authorization": f"Bearer {settings.openai_api_key}"},
                 timeout=settings.decision_timeout_s,
+                limits=httpx.Limits(max_connections=20, max_keepalive_connections=10,
+                                   keepalive_expiry=120.0),
             )
             self.status = "ready"
             await self._warm_up()
@@ -132,18 +138,28 @@ class DecisionClient:
         state = build_state(env, tier0_evidence)
         questions = build_questions(env.channel)
         t0 = time.perf_counter()
+        diagnostics: dict[str, Any] = {}
         try:
             if self._http is not None:
-                answers, model = await self._call_openai(state, questions)
+                answers, model, diagnostics = await self._call_openai(state, questions)
             else:
                 answers, model = await self._call_jev(state, questions)
         except Exception as exc:
             log.warning("Tier 1 (%s) call failed: %r", self.provider, exc)
             return None
         latency = (time.perf_counter() - t0) * 1000
-        return _to_result(answers, self.provider, model, latency, env.channel)
+        result = _to_result(answers, self.provider, model, latency, env.channel)
+        if result is not None:
+            result.server_processing_ms = diagnostics.get("server_processing_ms")
+            result.request_id = diagnostics.get("request_id")
+            if result.server_processing_ms is not None:
+                result.request_overhead_ms = round(max(0.0, latency - result.server_processing_ms), 1)
+            log.info("Decision request total=%.1fms server=%s overhead=%s questions=%d request_id=%s",
+                     latency, result.server_processing_ms, result.request_overhead_ms,
+                     len(questions), result.request_id)
+        return result
 
-    async def _call_openai(self, state: dict, questions: list) -> tuple[dict[str, dict], str]:
+    async def _call_openai(self, state: dict, questions: list) -> tuple[dict[str, dict], str, dict[str, Any]]:
         assert self._http is not None
         resp = await self._http.post("/decisions", json={
             "model": settings.decision_model,
@@ -166,7 +182,16 @@ class DecisionClient:
                                       "probs": {str(p["value"]): p["probability"] for p in a["probabilities"]}}
             elif t == "score":
                 answers[a["name"]] = {"score": a["score"], "confidence": a["confidence"]}
-        return answers, data.get("model", settings.decision_model)
+        server_ms = None
+        try:
+            value = float(resp.headers.get("openai-processing-ms", ""))
+            if math.isfinite(value) and value >= 0:
+                server_ms = value
+        except ValueError:
+            pass
+        return answers, data.get("model", settings.decision_model), {
+            "server_processing_ms": server_ms, "request_id": resp.headers.get("x-request-id"),
+        }
 
     async def _call_jev(self, state: dict, questions: list) -> tuple[dict[str, dict], str]:
         r = await self._ts.system_one(state=state, questions=to_typesafe(questions))

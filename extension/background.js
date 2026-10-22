@@ -3,6 +3,7 @@
 importScripts("helpers.js");
 
 const H = ScamShieldHelpers;
+const VERDICT_CACHE_VERSION = "url-v3";
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 15000;
 const inFlightUrls = new Map();
@@ -212,7 +213,7 @@ async function getCachedVerdict(key) {
   if (!key) return null;
   const { verdictCache = {} } = await chrome.storage.session.get("verdictCache");
   const item = verdictCache[key];
-  if (!item || item.expiresAt <= Date.now()) {
+  if (!item || item.version !== VERDICT_CACHE_VERSION || item.expiresAt <= Date.now()) {
     if (item) {
       delete verdictCache[key];
       await chrome.storage.session.set({ verdictCache });
@@ -225,7 +226,7 @@ async function getCachedVerdict(key) {
 async function putCachedVerdict(key, verdict) {
   if (!key) return;
   const { verdictCache = {} } = await chrome.storage.session.get("verdictCache");
-  verdictCache[key] = { verdict, expiresAt: Date.now() + CACHE_TTL_MS };
+  verdictCache[key] = { verdict, version: VERDICT_CACHE_VERSION, expiresAt: Date.now() + CACHE_TTL_MS };
   const keys = Object.keys(verdictCache);
   if (keys.length > 500) {
     keys.sort((a, b) => verdictCache[a].expiresAt - verdictCache[b].expiresAt)

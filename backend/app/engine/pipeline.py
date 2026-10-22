@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 
 MAX_URLS = 10
 # Invalidate persisted URL verdicts when URL rules or fusion behavior changes.
-URL_CACHE_VERSION = "url-v2"
+URL_CACHE_VERSION = "url-v3"
 
 # Fallback category when Jev is unavailable: first matching rule wins
 RULE_CATEGORY = [
@@ -51,7 +51,7 @@ def _url_risk(rules_ev: list[Evidence], p_model: float | None) -> float:
     r = rules_score(rules_ev)
     risk = sigmoid(0.7 * logit(p_model) + 0.3 * logit(r)) if p_model is not None else r
     floors = [e.floor for e in rules_ev if e.floor is not None]
-    if not floors and any(e.id == "url.allowlisted" for e in rules_ev):
+    if not floors and any(e.id in {"url.allowlisted", "url.verified_portal"} for e in rules_ev):
         risk = min(risk, settings.allowlisted_url_cap)
     return max([risk, *floors])
 
@@ -68,7 +68,8 @@ def _category(jev: DecisionResult | None, evidence: list[Evidence], verdict: str
     return "other_scam"
 
 
-async def analyze(env: Envelope, deep: bool = False, use_cache: bool = True) -> dict[str, Any]:
+async def analyze(env: Envelope, deep: bool = False, use_cache: bool = True,
+                  decision_timeout_s: float | None = None) -> dict[str, Any]:
     t_start = time.perf_counter()
     timings: dict[str, float] = {}
     env.urls = list(dict.fromkeys(env.urls))[:MAX_URLS]
@@ -98,6 +99,15 @@ async def analyze(env: Envelope, deep: bool = False, use_cache: bool = True) -> 
         evidence.extend(analyze_email(env))
     timings["tier0a"] = (time.perf_counter() - t0) * 1000
 
+    async def classify():
+        if decision_timeout_s is None:
+            return await decision_client.classify(env, evidence)
+        try:
+            return await asyncio.wait_for(decision_client.classify(env, evidence), decision_timeout_s)
+        except asyncio.TimeoutError:
+            log.info("Live-call decision budget exceeded; using local rules and models")
+            return None
+
     # ── Tier 0b (thread) ∥ Tier 1 Jev ───────────────────────────────────────
     t0 = time.perf_counter()
     jev: DecisionResult | None = None
@@ -106,10 +116,10 @@ async def analyze(env: Envelope, deep: bool = False, use_cache: bool = True) -> 
         timings["tier0b"] = local.latency_ms
         pre = _url_risk(evidence, local.p_local)
         if pre >= settings.url_skip_jev_below:
-            jev = await decision_client.classify(env, evidence)
+            jev = await classify()
     else:
         local_task = asyncio.to_thread(local_models.score, env)
-        local, jev = await asyncio.gather(local_task, decision_client.classify(env, evidence))
+        local, jev = await asyncio.gather(local_task, classify())
         timings["tier0b"] = local.latency_ms
     if jev is not None:
         timings["tier1"] = jev.latency_ms

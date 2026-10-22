@@ -4,6 +4,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { OrderedAudioQueue } from "../lib/orderedAudioQueue";
 import { callApi, type CallUpdate } from "../lib/callApi";
 import { CATEGORY_LABEL, cx, ms, pct, TRIGGER_LABEL } from "../lib/format";
 import { startMicCapture, type MicCapture } from "../lib/audio";
@@ -164,9 +165,7 @@ export default function CallShieldPage() {
   const captureRef = useRef<MicCapture | null>(null);
   const sessionRef = useRef<string | null>(null);
   const seqRef = useRef(0);
-  const inFlightRef = useRef(false);
-  const pendingRef = useRef<QueuedChunk | null>(null);
-  const drainWaitersRef = useRef<(() => void)[]>([]);
+  const queueRef = useRef<OrderedAudioQueue<QueuedChunk, { text: string; latency_ms: number }> | null>(null);
   const scamSeenRef = useRef(false);
   const stoppingRef = useRef(false);
   const startedAtRef = useRef(0);
@@ -189,43 +188,11 @@ export default function CallShieldPage() {
     }
   }, []);
 
-  const settleQueue = () => {
-    if (inFlightRef.current || pendingRef.current) return;
-    drainWaitersRef.current.splice(0).forEach((resolve) => resolve());
-  };
-
-  const sendQueued = useCallback(async (initial: QueuedChunk) => {
-    if (inFlightRef.current) {
-      pendingRef.current = initial;
-      return;
-    }
-    inFlightRef.current = true;
-    let next: QueuedChunk | null = initial;
-    while (next) {
-      const sessionId = sessionRef.current;
-      if (!sessionId) break;
-      try {
-        applyUpdate(await callApi.sendChunk(sessionId, next.file, next.seq));
-      } catch (reason) {
-        setError((reason as Error).message);
-      }
-      next = pendingRef.current;
-      pendingRef.current = null;
-    }
-    inFlightRef.current = false;
-    settleQueue();
-  }, [applyUpdate]);
-
   const enqueueChunk = useCallback((file: Blob) => {
-    const chunk = { file, seq: seqRef.current++ };
-    if (inFlightRef.current) pendingRef.current = chunk;
-    else void sendQueued(chunk);
-  }, [sendQueued]);
+    queueRef.current?.push({ file, seq: seqRef.current++ });
+  }, []);
 
-  const waitForQueue = () => {
-    if (!inFlightRef.current && !pendingRef.current) return Promise.resolve();
-    return new Promise<void>((resolve) => drainWaitersRef.current.push(resolve));
-  };
+  const waitForQueue = () => queueRef.current?.drain() ?? Promise.resolve();
 
   const resetAnalysis = () => {
     setUpdates([]);
@@ -235,7 +202,7 @@ export default function CallShieldPage() {
     setLevel(0);
     scamSeenRef.current = false;
     seqRef.current = 0;
-    pendingRef.current = null;
+    queueRef.current = null;
     demoUpdatesRef.current = [];
     revealedRef.current = 0;
   };
@@ -244,15 +211,28 @@ export default function CallShieldPage() {
     resetAnalysis();
     setActivity("starting");
     try {
+      const session = await callApi.createSession(callerNumber);
+      const sessionId = session.session_id;
+      sessionRef.current = sessionId;
+      queueRef.current = new OrderedAudioQueue(
+        chunk => callApi.transcribeChunk(sessionId, chunk.file),
+        async (chunk, prepared) => {
+          const update = await callApi.sendChunk(sessionId, chunk.file, chunk.seq, prepared);
+          if (sessionRef.current === sessionId) applyUpdate(update);
+        },
+        reason => setError((reason as Error).message),
+      );
       const capture = await startMicCapture({ onChunk: enqueueChunk, onLevel: setLevel });
       captureRef.current = capture;
-      const session = await callApi.createSession(callerNumber);
-      sessionRef.current = session.session_id;
       startedAtRef.current = Date.now();
       setActivity("listening");
     } catch (reason) {
       await captureRef.current?.stop();
       captureRef.current = null;
+      await waitForQueue();
+      if (sessionRef.current) await callApi.endSession(sessionRef.current).catch(() => {});
+      sessionRef.current = null;
+      queueRef.current = null;
       const caught = reason as Error;
       const permissionDenied = caught.name === "NotAllowedError" || caught.name === "SecurityError";
       setError(permissionDenied
@@ -583,7 +563,7 @@ export default function CallShieldPage() {
                   <div>
                     <AudioLines className="mx-auto size-8 text-ink-3" aria-hidden />
                     <p className="mt-2 text-sm font-medium text-ink">Waiting for speech…</p>
-                    <p className="mt-1 text-xs text-ink-3">The transcript appears here in 4-second sections.</p>
+                    <p className="mt-1 text-xs text-ink-3">The transcript appears here in 3-second sections.</p>
                   </div>
                 </div>
               )}

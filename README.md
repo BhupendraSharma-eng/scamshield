@@ -84,3 +84,39 @@ of performance on new messages.
 Offline dataset check on 22 October 2026: all 400 scam SMS/emails and all 100 fraud URLs
 were detected as SCAM. Of 100 labelled legitimate URLs, 66 were SAFE, 34 were SUSPICIOUS,
 and none were SCAM. The remaining caution flags are false alarms on that labelled set.
+
+
+## Portal and live-audio latency fix
+
+The exact HTTPS BSSS MIS login URL is verified against the college's official app privacy
+policy. Its reassuring signal applies only to that host/path without redirect queries,
+credentials or nonstandard ports. URL cache policy is now `url-v3`; extension cache
+entries from older policies are discarded on the next check.
+
+Live audio captures three-second WAV chunks. Two `/transcribe` preparations run concurrently,
+then `/chunk` receives the prepared text and audio for analysis in capture order. Every queued
+chunk is retained. The original `/chunk` endpoint still supports audio-only callers. A shared
+HTTP client reuses transcription connections. The live decision stage has a configurable
+`CALL_DECISION_TIMEOUT_S` budget (default 1.25 seconds); timeout uses local rules and models.
+Speech-provider latency itself remains external and is not guaranteed by this budget.
+
+After applying: rebuild the frontend, restart the backend, relaunch the unpacked extension,
+and reload existing test pages. Deploy the rebuilt frontend and backend together because
+pipelined live capture uses the new preparation endpoint. Rehearse a human microphone call
+and confirm all spoken phrases are retained, then test the recorded scam demo.
+
+
+### Decisions request latency
+
+The AI decision time is measured around the complete HTTP request, including connection
+setup, network travel and provider processing. A persistent connection can now remain idle
+for 120 seconds rather than HTTPX's default five seconds. Input JSON is compacted without
+removing fields or questions. OpenAI's optional `openai-processing-ms` and `x-request-id`
+headers are retained for diagnosis; missing server timing stays unknown. The UI timing
+hover explains the total/server split. Other request time is an estimate, not a pure
+network measurement or a model inference measurement.
+
+Run `cd backend && .venv/bin/python scripts/benchmark_decisions.py --runs 5` against the
+configured account to compare the first connection, subsequent requests, and one versus
+all URL questions. The single-question variant is diagnostic and does not change the
+production question set. No subsecond API result has been established by local mocked tests.

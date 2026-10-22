@@ -22,6 +22,8 @@ export interface UrlRow {
 }
 
 export interface Tier1 {
+  server_processing_ms?: number | null;
+  request_overhead_ms?: number | null;
   provider: string;
   model: string;
   p_scam: number;

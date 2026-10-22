@@ -17,6 +17,7 @@ from app.tier0.local_model import local_models
 from app.tier0.voice_deepfake import voice_detector
 from app.tier1.decision_client import decision_client
 from app.tier2.auditor import auditor
+from app.tier2 import stt
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -28,6 +29,7 @@ async def lifespan(_: FastAPI):
     await asyncio.to_thread(voice_detector.load)
     await decision_client.start()
     await auditor.start()
+    await stt.start()
     logging.getLogger("scamshield").info(
         "models=%s tier1=%s/%s llm=%s deepfake=%s",
         local_models.status, decision_client.provider, decision_client.status, auditor.available, voice_detector.status,
@@ -35,6 +37,7 @@ async def lifespan(_: FastAPI):
     yield
     await decision_client.close()
     await auditor.close()
+    await stt.close()
 
 
 app = FastAPI(title="ScamShield API", version="0.1.0", lifespan=lifespan)

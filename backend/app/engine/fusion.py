@@ -90,7 +90,7 @@ def fuse(
     risk = base
     floors = [e.floor for e in evidence if e.floor is not None]
     # A standalone check of an exactly allowlisted official domain with no red flags stays low
-    if channel == "url" and not floors and any(e.id == "url.allowlisted" for e in evidence):
+    if channel == "url" and not floors and any(e.id in {"url.allowlisted", "url.verified_portal"} for e in evidence):
         if risk > settings.allowlisted_url_cap:
             risk, decided_by = settings.allowlisted_url_cap, "allowlist"
     # Exact brand name on another ending (amazon.net) with no other red flag: at most SUSPICIOUS

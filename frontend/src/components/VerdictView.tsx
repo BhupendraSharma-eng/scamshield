@@ -49,7 +49,7 @@ function HighlightedText({ text, phrases }: { text: string; phrases: string[] })
   );
 }
 
-function ScoreRow({ icon, label, sub, value, latency }: { icon: ReactNode; label: string; sub?: string; value: number | null; latency?: number }) {
+function ScoreRow({ icon, label, sub, value, latency, latencyHint }: { icon: ReactNode; label: string; sub?: string; value: number | null; latency?: number; latencyHint?: string }) {
   return (
     <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-1">
       <span className="text-ink-3">{icon}</span>
@@ -60,7 +60,7 @@ function ScoreRow({ icon, label, sub, value, latency }: { icon: ReactNode; label
         </div>
         {sub && <div className="truncate text-xs text-ink-3">{sub}</div>}
       </div>
-      <span className="tabular w-14 text-right text-xs text-ink-3">{latency != null ? ms(latency) : ""}</span>
+      <span title={latencyHint} className="tabular w-14 text-right text-xs text-ink-3">{latency != null ? ms(latency) : ""}</span>
       <span />
       <div className="col-span-2 h-1.5 rounded-full bg-surface-2">
         {value != null && <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(1.5, value * 100)}%` }} />}
@@ -245,7 +245,10 @@ export default function VerdictView({ verdict: initial }: { verdict: Verdict }) 
             <ScoreRow icon={<ListChecks className="size-4" />} label="Security rules" sub="links, sender, scam phrases" value={v.scores.rules} latency={lat.tier0a} />
             <ScoreRow icon={<Cpu className="size-4" />} label="On-device AI models" sub={Object.entries(v.scores.models).map(([k, x]) => `${k} ${pct(x)}`).join(" · ") || "—"} value={v.scores.p_local} latency={lat.tier0b} />
             <ScoreRow icon={<Sparkles className="size-4" />} label="AI decision model"
-              sub={v.tier1 ? `${v.tier1.provider} · ${v.tier1.model}` : "offline — skipped"} value={v.scores.p_jev} latency={lat.tier1} />
+              sub={v.tier1 ? `${v.tier1.provider} · ${v.tier1.model}` : "offline — skipped"} value={v.scores.p_jev} latency={lat.tier1}
+              latencyHint={v.tier1?.server_processing_ms != null
+                ? `Total request: ${ms(lat.tier1)}; OpenAI processing: ${ms(v.tier1.server_processing_ms)}; other request time: ${ms(v.tier1.request_overhead_ms ?? undefined)}`
+                : "Total request time, including the network round trip. Server timing was not supplied."} />
           </div>
           <p className="mt-4 text-xs text-ink-3">
             Mode: {v.mode === "online" ? "online (all tiers)" : "offline (on-device only)"} · Combined in log-odds, then hard security rules applied.

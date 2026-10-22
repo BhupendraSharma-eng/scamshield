@@ -242,6 +242,17 @@ def analyze_url(url: str) -> UrlAnalysis:
     path_and_query = unquote(f"{parsed.path}?{parsed.query}" if parsed.query else parsed.path)
     evidence: list[Evidence] = []
     allowlisted = registered_domain in SAFE_DOMAINS
+    # Verified by BSSS's official app privacy policy, which links this exact MIS URL.
+    # Do not extend this trust to arbitrary subdomains, redirect queries or download paths.
+    if (parsed.scheme == "https" and ascii_host == "bssserp.com"
+            and parsed.path.rstrip("/") == "/login/mis" and not parsed.query
+            and not parsed.username and not parsed.password
+            and parsed.netloc.lower() in {"bssserp.com", "bssserp.com:443"}):
+        evidence.append(_evidence(
+            "url.verified_portal", -0.5,
+            "This exact MIS login address is linked by the official BSSS college website.",
+            url=normalized, verification_source="https://bsssbhopal.edu.in/privacy-policy-bsss-app",
+        ))
     institutional = suffix in _INSTITUTIONAL_SUFFIXES
     institution_brand = _exact_brand_key(first_label) if institutional else None
 

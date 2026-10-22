@@ -58,10 +58,21 @@ export const callApi = {
   createSession: (number?: string) =>
     callRequest<{ session_id: string }>("/api/call/session", jsonPost(number?.trim() ? { number: number.trim() } : {})),
 
-  sendChunk: (sessionId: string, file: Blob, seq: number) => {
+  transcribeChunk: (sessionId: string, file: Blob) => {
+    const form = new FormData();
+    form.append("file", file, "chunk.wav");
+    return callRequest<{ text: string; latency_ms: number }>(`/api/call/session/${encodeURIComponent(sessionId)}/transcribe`, { method: "POST", body: form });
+  },
+
+  sendChunk: (sessionId: string, file: Blob, seq: number, prepared?: { text: string; latency_ms: number }) => {
     const form = new FormData();
     form.append("file", file, `call-${seq}.wav`);
     form.append("seq", String(seq));
+    if (prepared) {
+      form.append("transcription_prepared", "true");
+      form.append("transcribed_text", prepared.text);
+      form.append("transcription_ms", String(prepared.latency_ms));
+    }
     return callRequest<CallUpdate>(`/api/call/session/${encodeURIComponent(sessionId)}/chunk`, { method: "POST", body: form });
   },
 

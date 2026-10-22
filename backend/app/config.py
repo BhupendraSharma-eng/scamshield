@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     llm_provider: str = "openai"            # openai | openrouter
     llm_model: str = "gpt-5.6-luna"         # ~4 s; "gpt-5.4-mini" ~2.3 s
     llm_timeout_s: float = 20.0
+    call_decision_timeout_s: float = 1.25
     stt_model: str = "gpt-4o-mini-transcribe"  # live-call speech-to-text
 
     # Tier 0 models
