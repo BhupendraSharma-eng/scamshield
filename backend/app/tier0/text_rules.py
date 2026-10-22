@@ -52,7 +52,7 @@ _UPI_COLLECT_RE = re.compile(
 )
 _LOTTERY_RE = re.compile(
     r"\b(?:won|winner|lottery|lucky\s*draw|prize|inaam)\b"
-    r"|\bcashback\s+(?:of\s+)?(?:rs\.?|inr|₹)?\s*\d+",
+    r"|\bcashback\s+(?:of\s+)?(?:rs\.?|inr|₹)?\s*\d[\d,]*",
     _FLAGS,
 )
 _JOB_TASK_RE = re.compile(
