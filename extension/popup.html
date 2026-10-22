@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ScamShield</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <div class="brand-mark" aria-hidden="true">✓</div>
+    <div><h1>ScamShield</h1><p>Proactive scam protection</p></div>
+    <label class="switch" title="Turn protection on or off">
+      <input id="protection" type="checkbox" aria-label="Protection enabled">
+      <span></span>
+    </label>
+  </header>
+
+  <main>
+    <section id="status-card" class="status-card neutral" aria-live="polite">
+      <div class="status-top"><span id="status-icon" class="status-icon">…</span><span id="status-label">Checking this page</span><strong id="status-risk"></strong></div>
+      <p id="status-category">ScamShield is looking for threats.</p>
+      <ul id="status-reasons"></ul>
+    </section>
+
+    <div class="stats">
+      <div><strong id="pages-checked">0</strong><span>Pages checked</span></div>
+      <div><strong id="threats-blocked">0</strong><span>Threats blocked</span></div>
+    </div>
+
+    <section class="panel">
+      <h2>Check a link</h2>
+      <form id="check-form">
+        <input id="check-url" type="url" placeholder="https://example.com" aria-label="Link to check" required>
+        <button type="submit">Check</button>
+      </form>
+      <p id="check-result" class="feedback" aria-live="polite"></p>
+    </section>
+
+    <section class="panel settings">
+      <h2>Backend</h2>
+      <label for="api-base">API base URL</label>
+      <div class="input-row">
+        <input id="api-base" type="url" aria-label="Backend API base URL">
+        <button id="test-api" type="button">Test</button>
+      </div>
+      <p id="api-status" class="feedback" aria-live="polite">Not tested</p>
+    </section>
+  </main>
+
+  <footer><a href="https://bhupendrasharma-eng.github.io/scamshield/dashboard" target="_blank" rel="noopener noreferrer">Open dashboard <span>↗</span></a></footer>
+  <script src="helpers.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
