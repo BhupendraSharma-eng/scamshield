@@ -3,6 +3,7 @@ import {
   Play, Radio, ShieldAlert, Upload, User, Volume2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { callApi, type CallUpdate } from "../lib/callApi";
 import { CATEGORY_LABEL, cx, ms, pct, TRIGGER_LABEL } from "../lib/format";
 import { startMicCapture, type MicCapture } from "../lib/audio";
@@ -157,6 +158,7 @@ export default function CallShieldPage() {
   const [elapsed, setElapsed] = useState(0);
   const [alertUpdate, setAlertUpdate] = useState<CallUpdate | null>(null);
   const [demoUrl, setDemoUrl] = useState<string | null>(null);
+  const [demoNeedsPlay, setDemoNeedsPlay] = useState(false);
   const [builtIns, setBuiltIns] = useState<Record<string, boolean>>({});
 
   const captureRef = useRef<MicCapture | null>(null);
@@ -292,6 +294,13 @@ export default function CallShieldPage() {
   }, [updates.length]);
 
   useEffect(() => {
+    if (!alertUpdate) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [alertUpdate]);
+
+  useEffect(() => {
     let active = true;
     const base = import.meta.env.BASE_URL.endsWith("/") ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
     void Promise.all(BUILT_IN_CLIPS.map(async (clip) => {
@@ -314,6 +323,7 @@ export default function CallShieldPage() {
 
   const startDemo = async (file: File) => {
     resetAnalysis();
+    setDemoNeedsPlay(false);
     audioRef.current?.pause();
     if (demoUrl) URL.revokeObjectURL(demoUrl);
     setDemoUrl(null);
@@ -325,7 +335,12 @@ export default function CallShieldPage() {
       setDemoUrl(URL.createObjectURL(file));
       setActivity("playing");
       window.setTimeout(() => {
-        void audioRef.current?.play().catch(() => undefined);
+        const playback = audioRef.current?.play();
+        if (!playback) {
+          setDemoNeedsPlay(true);
+          return;
+        }
+        void playback.catch(() => setDemoNeedsPlay(true));
       }, 0);
     } catch (reason) {
       setError((reason as Error).message);
@@ -349,7 +364,7 @@ export default function CallShieldPage() {
 
   const revealDemoUpdates = () => {
     const audio = audioRef.current;
-    if (!audio) return;
+    if (!audio || (audio.paused && !audio.ended)) return;
     const count = Math.min(demoUpdatesRef.current.length, Math.floor(audio.currentTime / 4) + 1);
     while (revealedRef.current < count) {
       applyUpdate(demoUpdatesRef.current[revealedRef.current]);
@@ -357,10 +372,22 @@ export default function CallShieldPage() {
     }
   };
 
+  const playDemo = async () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    try {
+      await audio.play();
+      setDemoNeedsPlay(false);
+    } catch (reason) {
+      setError((reason as Error).message || "Your browser blocked audio playback. Press play in the audio controls to continue.");
+    }
+  };
+
   const changeMode = async (next: Mode) => {
     if (next === mode) return;
     if (activity === "listening" || activity === "stopping") await stopLive();
     audioRef.current?.pause();
+    setDemoNeedsPlay(false);
     setActivity("idle");
     setMode(next);
     resetAnalysis();
@@ -467,11 +494,21 @@ export default function CallShieldPage() {
             </div>
             <p className="text-xs text-ink-3">WAV, MP3, M4A, or WebM · up to 2 minutes. Analysis is revealed in sync with playback.</p>
             {demoUrl && (
-              <audio ref={audioRef} src={demoUrl} controls className="h-12 w-full" onPlay={revealDemoUpdates}
-                onTimeUpdate={revealDemoUpdates} onSeeked={revealDemoUpdates}
-                onEnded={() => { revealDemoUpdates(); setActivity("idle"); }}>
-                Your browser does not support audio playback.
-              </audio>
+              <div className="relative overflow-hidden rounded-2xl bg-surface-2 p-3 ring-1 ring-line">
+                <audio ref={audioRef} src={demoUrl} controls className="h-12 w-full" onPlay={() => { setDemoNeedsPlay(false); revealDemoUpdates(); }}
+                  onTimeUpdate={revealDemoUpdates} onSeeked={revealDemoUpdates}
+                  onEnded={() => { revealDemoUpdates(); setActivity("idle"); }}>
+                  Your browser does not support audio playback.
+                </audio>
+                {demoNeedsPlay && (
+                  <div className="absolute inset-0 grid place-items-center bg-surface/95 p-2">
+                    <button type="button" onClick={() => void playDemo()}
+                      className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-accent px-6 text-base font-bold text-accent-ink shadow-sm focus:outline-none focus:ring-4 focus:ring-accent/30">
+                      <Play className="size-5 fill-current" aria-hidden /> Play call
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -558,44 +595,51 @@ export default function CallShieldPage() {
           <div className="flex min-h-36 flex-col items-center justify-center gap-3 text-center">
             <Spinner className="size-6 text-accent" />
             <div>
-              <p className="font-medium text-ink">{activity === "analyzing" ? "Preparing the live playback…" : "Shield is listening…"}</p>
-              <p className="mt-1 text-sm text-ink-2">{activity === "analyzing" ? "The clip is being split into 4-second windows." : "Your first risk update will appear after the first audio window."}</p>
+              <p className="font-medium text-ink">{activity === "analyzing" ? "Analyzing call… transcribing 8 windows" : "Shield is listening…"}</p>
+              <p className="mt-1 text-sm text-ink-2">{activity === "analyzing" ? "This can take about 35 seconds. Playback will be ready when analysis finishes." : "Your first risk update will appear after the first audio window."}</p>
             </div>
           </div>
         </Card>
       ) : <HowItWorks />}
 
-      {alertUpdate && (
-        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-scam p-4 text-accent-ink" role="alertdialog" aria-modal="true" aria-labelledby="scam-alert-title">
-          <div className="w-full max-w-2xl py-8 text-center">
-            <div className="mx-auto grid size-20 place-items-center rounded-full bg-surface/15 ring-4 ring-surface/30">
-              <PhoneOff className="size-10" aria-hidden />
+      {alertUpdate && createPortal(
+        <div className="fixed inset-0 z-[100] flex overflow-y-auto bg-scam text-accent-ink" role="alertdialog" aria-modal="true" aria-labelledby="scam-alert-title"
+          style={{
+            paddingTop: "max(0.75rem, env(safe-area-inset-top))",
+            paddingRight: "max(0.75rem, env(safe-area-inset-right))",
+            paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))",
+            paddingLeft: "max(0.75rem, env(safe-area-inset-left))",
+          }}>
+          <div className="m-auto flex max-h-full w-full max-w-lg flex-col overflow-y-auto text-center">
+            <div className="mx-auto grid size-14 shrink-0 place-items-center rounded-full bg-surface/15 ring-4 ring-surface/30 sm:size-16">
+              <PhoneOff className="size-7 sm:size-8" aria-hidden />
             </div>
-            <h2 id="scam-alert-title" className="mt-6 text-3xl font-black tracking-tight sm:text-5xl">🛑 HANG UP — this call is a scam</h2>
-            <div className="tabular mt-3 text-xl font-bold">Risk: {pct(alertUpdate.risk)}</div>
+            <h2 id="scam-alert-title" className="mt-3 text-2xl font-black leading-tight tracking-tight sm:text-3xl">🛑 HANG UP — this call is a scam</h2>
+            <div className="tabular mt-1.5 text-lg font-bold">Risk: {pct(alertUpdate.risk)}</div>
             {alertUpdate.reasons.length > 0 && (
-              <ul className="mx-auto mt-6 max-w-xl space-y-2 text-left text-base sm:text-lg">
+              <ul className="mt-3 space-y-2 text-left text-sm sm:text-base">
                 {alertUpdate.reasons.slice(0, 2).map((reason, index) => (
-                  <li key={index} className="flex gap-3 rounded-xl bg-surface/15 p-3">
-                    <ShieldAlert className="mt-0.5 size-5 shrink-0" aria-hidden />
+                  <li key={index} className="flex gap-2 rounded-xl bg-surface/15 px-3 py-2.5 leading-snug">
+                    <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
                     <span><RichText text={reason} /></span>
                   </li>
                 ))}
               </ul>
             )}
-            <p className="mx-auto mt-5 max-w-xl text-lg font-semibold">{alertUpdate.action}</p>
-            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+            <p className="mt-3 text-base font-semibold leading-snug">{alertUpdate.action}</p>
+            <div className="mt-4 grid grid-cols-2 gap-2.5">
               <button type="button" onClick={() => void handleHungUp()}
-                className="min-h-14 rounded-2xl bg-surface px-7 text-base font-bold text-scam-ink shadow-sm focus:outline-none focus:ring-4 focus:ring-surface/40">
+                className="min-h-12 rounded-xl bg-surface px-3 text-sm font-bold text-scam-ink shadow-sm focus:outline-none focus:ring-4 focus:ring-surface/40 sm:text-base">
                 I hung up
               </button>
               <button type="button" onClick={() => setAlertUpdate(null)}
-                className="min-h-14 rounded-2xl bg-surface/15 px-7 text-base font-semibold text-accent-ink ring-2 ring-surface/50 hover:bg-surface/25">
+                className="min-h-12 rounded-xl bg-surface/15 px-3 text-sm font-semibold text-accent-ink ring-2 ring-surface/50 hover:bg-surface/25 sm:text-base">
                 Keep listening
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
