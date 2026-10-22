@@ -1,6 +1,29 @@
 import type { Channel, Health, ScanRow, Stats, Verdict, VerdictLabel } from "./types";
 
-const BASE = import.meta.env.VITE_API_BASE ?? "";
+const API_KEY = "scamshield.apiBase";
+const BUILD_DEFAULT: string = import.meta.env.VITE_API_BASE ?? "";
+
+/** Backend origin: user override (Server settings) → build default → same origin. */
+export function getApiBase(): string {
+  try {
+    const v = localStorage.getItem(API_KEY);
+    if (v !== null) return v;
+  } catch {
+    /* storage unavailable */
+  }
+  return BUILD_DEFAULT;
+}
+
+export function setApiBase(url: string | null) {
+  try {
+    if (url === null) localStorage.removeItem(API_KEY);
+    else localStorage.setItem(API_KEY, url.replace(/\/+$/, ""));
+  } catch {
+    /* storage unavailable: the setting lasts for this page only */
+  }
+}
+
+export const defaultApiBase = () => BUILD_DEFAULT;
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -11,9 +34,10 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${BASE}${path}`, init);
+    res = await fetch(`${getApiBase()}${path}`, init);
   } catch {
-    throw new ApiError(0, "Can't reach the ScamShield server. Is the backend running on port 8000?");
+    const where = getApiBase() || window.location.origin;
+    throw new ApiError(0, `Can't reach the ScamShield server at ${where}. Start the backend or change it in Server settings.`);
   }
   if (!res.ok) {
     let msg = `Request failed (${res.status})`;

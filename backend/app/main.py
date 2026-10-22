@@ -5,7 +5,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -33,6 +33,16 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="ScamShield API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+
+@app.middleware("http")
+async def allow_private_network(request: Request, call_next):
+    """Lets the hosted UI (GitHub Pages, https) call a backend on localhost/LAN (Chrome Private Network Access)."""
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Private-Network"] = "true"
+    return response
+
+
 app.include_router(router)
 
 # Serve the built frontend (frontend/dist) at / with SPA fallback, so one server runs the whole demo.

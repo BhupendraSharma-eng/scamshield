@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { cx } from "../lib/format";
 import { useTheme } from "../lib/hooks";
 import type { Health } from "../lib/types";
+import ServerSettings from "./ServerSettings";
 
 const NAV = [
   { to: "/", label: "Check", icon: ScanSearch, end: true },
@@ -12,7 +13,7 @@ const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, end: false },
 ];
 
-function StatusDot() {
+function StatusDot({ onClick }: { onClick: () => void }) {
   const [health, setHealth] = useState<Health | null>(null);
   const [down, setDown] = useState(false);
   useEffect(() => {
@@ -34,16 +35,21 @@ function StatusDot() {
   const label = down ? "Server offline" : !health ? "Connecting…" : online ? "AI online" : "Offline mode";
   const dot = down ? "bg-scam" : !health ? "bg-ink-3" : online ? "bg-safe" : "bg-warn";
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-ink-2" title={health ? `Decision model: ${health.tier1.model}` : undefined}>
+    <button type="button" onClick={onClick}
+      className="inline-flex min-h-8 items-center gap-1.5 rounded-lg px-1.5 text-xs text-ink-2 hover:bg-surface-2 hover:text-ink"
+      aria-label={`${label}. Server settings`}
+      title={health ? `Decision model: ${health.tier1.model}` : undefined}>
       <span className={cx("size-2 rounded-full", dot)} aria-hidden />
       {label}
-    </span>
+    </button>
   );
 }
 
 export default function Layout() {
   const { theme, toggle } = useTheme();
   const ThemeIcon = theme === "dark" ? Sun : Moon;
+  const [settings, setSettings] = useState(false);
+  const openSettings = () => setSettings(true);
 
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[15rem_minmax(0,1fr)]">
@@ -72,7 +78,7 @@ export default function Layout() {
           ))}
         </nav>
         <div className="mt-auto flex items-center justify-between px-2">
-          <StatusDot />
+          <StatusDot onClick={openSettings} />
           <button
             type="button"
             onClick={toggle}
@@ -92,7 +98,7 @@ export default function Layout() {
             <span className="font-bold tracking-tight">ScamShield</span>
           </div>
           <div className="flex items-center gap-2">
-            <StatusDot />
+            <StatusDot onClick={openSettings} />
             <button
               type="button"
               onClick={toggle}
@@ -125,6 +131,7 @@ export default function Layout() {
           ))}
         </nav>
       </div>
+      <ServerSettings open={settings} onClose={() => setSettings(false)} />
     </div>
   );
 }

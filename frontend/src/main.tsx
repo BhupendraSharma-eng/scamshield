@@ -26,7 +26,7 @@ const router = createBrowserRouter([
       { path: "/dashboard", element: <Suspense fallback={fallback}><DashboardPage /></Suspense> },
     ],
   },
-]);
+], { basename: import.meta.env.BASE_URL.replace(/\/$/, "") || "/" });
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
