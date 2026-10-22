@@ -149,6 +149,11 @@ def _apply_verdict(result: dict[str, Any], audit: dict[str, Any], evidence: list
         return
     floor = max((e.floor for e in evidence if e.floor is not None), default=0.0)
     if audit["verdict"] == "SCAM":
+        # Escalate only with concrete support: a strong rule flag or the decision model leaning scam
+        strong = any(e.source == "rule" and e.weight >= 0.5 for e in evidence)
+        t1 = (result.get("tier1") or {}).get("p_scam") or 0.0
+        if not strong and t1 < 0.6:
+            return
         new_risk = max(result["risk"], settings.thresh_scam)
     elif audit["verdict"] == "SAFE" and floor < settings.thresh_suspicious:
         new_risk = min(result["risk"], settings.thresh_suspicious - 0.01)
