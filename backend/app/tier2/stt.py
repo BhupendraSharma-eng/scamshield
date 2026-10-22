@@ -19,7 +19,7 @@ _client: httpx.AsyncClient | None = None
 async def start() -> None:
     global _client
     if settings.openai_api_key and _client is None:
-        _client = httpx.AsyncClient(timeout=_TIMEOUT_S, limits=httpx.Limits(max_connections=8, max_keepalive_connections=4))
+        _client = httpx.AsyncClient(timeout=_TIMEOUT_S, limits=httpx.Limits(max_connections=8, max_keepalive_connections=4, keepalive_expiry=120))
 
 
 async def close() -> None:

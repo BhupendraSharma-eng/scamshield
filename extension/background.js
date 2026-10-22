@@ -3,7 +3,7 @@
 importScripts("helpers.js");
 
 const H = ScamShieldHelpers;
-const VERDICT_CACHE_VERSION = "url-v3";
+const VERDICT_CACHE_VERSION = "url-v4";
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 15000;
 const inFlightUrls = new Map();

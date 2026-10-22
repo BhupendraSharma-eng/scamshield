@@ -42,3 +42,15 @@ test('a failed chunk is reported and does not wedge drain or later chunks', asyn
   expect(errors).toHaveLength(2);
   expect(committed).toEqual([2]);
 });
+
+test('synchronous preparation errors are reported without stalling later chunks', async () => {
+  const errors: unknown[] = [], committed: number[] = [];
+  const queue = new OrderedAudioQueue<number, string>(n => {
+    if (n === 0) throw new Error('synchronous failure');
+    return Promise.resolve(String(n));
+  }, async n => { committed.push(n); }, error => errors.push(error));
+  queue.push(0); queue.push(1);
+  await queue.drain();
+  expect(errors).toHaveLength(1);
+  expect(committed).toEqual([1]);
+});

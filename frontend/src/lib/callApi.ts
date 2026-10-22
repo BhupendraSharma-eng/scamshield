@@ -23,29 +23,35 @@ export interface CallUpdate {
   latency_ms: { stt: number; decision: number; deepfake: number; total: number };
 }
 
-async function callRequest<T>(path: string, init: RequestInit): Promise<T> {
-  let response: Response;
+export async function callRequest<T>(path: string, init: RequestInit, timeoutMs = 30_000): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    response = await fetch(`${getApiBase()}${path}`, {
+    const response = await fetch(`${getApiBase()}${path}`, {
       ...init,
+      signal: controller.signal,
       headers: { ...TUNNEL_HEADERS, ...(init.headers as Record<string, string> | undefined) },
     });
-  } catch {
+    if (!response.ok) {
+      let message = `Call analysis failed (${response.status})`;
+      try {
+        const body = await response.json() as { detail?: string | { msg?: string }[] };
+        if (typeof body.detail === "string") message = body.detail;
+        else if (Array.isArray(body.detail)) message = body.detail.map(item => item.msg ?? "Invalid request").join("; ");
+      } catch { /* Keep the status-based message for non-JSON error responses. */ }
+      throw new ApiError(response.status, message);
+    }
+    return await response.json() as T;
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new ApiError(0, "Call analysis timed out. Check your connection and try again.");
+    }
+    if (error instanceof ApiError) throw error;
     const where = getApiBase() || window.location.origin;
     throw new ApiError(0, `Can't reach the ScamShield server at ${where}. Start the backend or check Server settings.`);
+  } finally {
+    clearTimeout(timer);
   }
-  if (!response.ok) {
-    let message = `Call analysis failed (${response.status})`;
-    try {
-      const body = await response.json() as { detail?: string | { msg?: string }[] };
-      if (typeof body.detail === "string") message = body.detail;
-      else if (Array.isArray(body.detail)) message = body.detail.map((item) => item.msg ?? "Invalid request").join("; ");
-    } catch {
-      // Keep the status-based message for non-JSON errors.
-    }
-    throw new ApiError(response.status, message);
-  }
-  return response.json() as Promise<T>;
 }
 
 const jsonPost = (body?: unknown): RequestInit => ({
@@ -82,6 +88,6 @@ export const callApi = {
   analyzeFile: (file: File) => {
     const form = new FormData();
     form.append("file", file, file.name);
-    return callRequest<{ updates: CallUpdate[] }>("/api/call/analyze-file", { method: "POST", body: form });
+    return callRequest<{ updates: CallUpdate[] }>("/api/call/analyze-file", { method: "POST", body: form }, 180_000);
   },
 };

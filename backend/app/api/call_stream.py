@@ -402,6 +402,17 @@ async def _score_chunk(
         chunks=scored,
     )
     transcript = session["transcript"]
+    # No new words means no new textual evidence. Keep the previous verdict without
+    # another model request, and never repeat its one-shot alert during a pause.
+    previous_update = session.get("last")
+    if not piece and previous_update is not None:
+        update = previous_update.model_copy(update={
+            "seq": seq, "text": "", "deepfake": deepfake, "alert": False,
+            "latency_ms": LatencyMs(stt=stt_ms, decision=0, deepfake=fake_ms,
+                total=_ms(started) + (transcription_ms if transcribed_text is not None else 0)),
+        })
+        session["last"] = update
+        return update
     if len(transcript) < _MIN_TRANSCRIPT:
         update = _listening(
             session_id,
@@ -528,10 +539,24 @@ async def analyze_file(file: UploadFile = File(...)) -> dict[str, list[CallUpdat
         raise HTTPException(415, "Audio file is empty.")
     session_id = _create_session("")
     updates: list[CallUpdate] = []
+    async def prepare(index: int) -> tuple[bytes, str, float]:
+        wav = _encode_wav(windows[index], 16_000)
+        text, elapsed = await _timed_stt(wav, f"chunk-{index + 1}.wav")
+        return wav, text, elapsed
+
+    # At most two speech requests in flight; score in original order. Preparing
+    # the next window overlaps both current transcription and current analysis.
+    pending = {i: asyncio.create_task(prepare(i)) for i in range(min(2, len(windows)))}
     try:
-        for index, window in enumerate(windows, start=1):
-            wav = _encode_wav(window, 16_000)
-            updates.append(await _handle_chunk(session_id, wav, index, f"chunk-{index}.wav"))
+        for index in range(len(windows)):
+            wav, text, elapsed = await pending.pop(index)
+            if index + 2 < len(windows):
+                pending[index + 2] = asyncio.create_task(prepare(index + 2))
+            updates.append(await _handle_chunk(session_id, wav, index + 1,
+                f"chunk-{index + 1}.wav", text, elapsed))
     finally:
+        for task in pending.values():
+            task.cancel()
+        await asyncio.gather(*pending.values(), return_exceptions=True)
         sessions.pop(session_id, None)
     return {"updates": updates}

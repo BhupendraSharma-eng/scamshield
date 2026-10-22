@@ -90,7 +90,7 @@ and none were SCAM. The remaining caution flags are false alarms on that labelle
 
 The exact HTTPS BSSS MIS login URL is verified against the college's official app privacy
 policy. Its reassuring signal applies only to that host/path without redirect queries,
-credentials or nonstandard ports. URL cache policy is now `url-v3`; extension cache
+credentials or nonstandard ports. URL cache policy is now `url-v4`; extension cache
 entries from older policies are discarded on the next check.
 
 Live audio captures three-second WAV chunks. Two `/transcribe` preparations run concurrently,
@@ -120,3 +120,25 @@ Run `cd backend && .venv/bin/python scripts/benchmark_decisions.py --runs 5` aga
 configured account to compare the first connection, subsequent requests, and one versus
 all URL questions. The single-question variant is diagnostic and does not change the
 production question set. No subsecond API result has been established by local mocked tests.
+
+
+## Final demo freeze
+
+Standalone URL model scores require a corroborating technical indicator or a confident
+Tier 1 decision before raising a warning. Generic login paths alone stay below the warning
+threshold; the original model score remains visible and unconfirmed alerts are explained.
+URL details follow the same policy as the overall verdict. This policy does not verify a
+website's page content, and known brand mismatches and hard phishing rules remain active.
+
+Uploaded call demos now prepare two speech windows concurrently while scoring them in order.
+Silent live chunks reuse the last verdict without another decision request or repeated alert.
+Network timeouts cover response bodies as well as response headers, so stalled requests cannot
+leave the live queue waiting forever. Recordings receive a longer timeout than individual chunks.
+
+Validation: 174 backend tests, six frontend queue/network tests, extension helper/cache checks,
+and the production Pages build pass. All 400 scam SMS/emails and 100 fraud URLs are detected;
+100 labelled legitimate URLs produce 66 SAFE, 34 SUSPICIOUS and zero SCAM verdicts.
+
+Before the judges: pull the final commit into the actual running checkout, rebuild `frontend`,
+restart the backend, and reload the extension and existing test tabs. Keep the backend and ngrok
+running. A GitHub Pages deployment updates the frontend only; it does not update the local API.

@@ -575,7 +575,7 @@ export default function CallShieldPage() {
           <div className="flex min-h-36 flex-col items-center justify-center gap-3 text-center">
             <Spinner className="size-6 text-accent" />
             <div>
-              <p className="font-medium text-ink">{activity === "analyzing" ? "Analyzing call… transcribing 8 windows" : "Shield is listening…"}</p>
+              <p className="font-medium text-ink">{activity === "analyzing" ? "Analyzing call… transcribing audio" : "Shield is listening…"}</p>
               <p className="mt-1 text-sm text-ink-2">{activity === "analyzing" ? "This can take about 35 seconds. Playback will be ready when analysis finishes." : "Your first risk update will appear after the first audio window."}</p>
             </div>
           </div>

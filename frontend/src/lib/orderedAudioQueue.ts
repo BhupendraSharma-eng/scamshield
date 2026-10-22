@@ -29,7 +29,7 @@ export class OrderedAudioQueue<Input, Prepared> {
       if (job.ready || job.started) continue;
       job.started = true;
       this.preparing++;
-      void this.prepare(job.input).then(value => { job.value = value; }, error => {
+      void (async () => this.prepare(job.input))().then(value => { job.value = value; }, error => {
         job.error = error; job.failed = true;
       }).finally(() => {
         job.ready = true;

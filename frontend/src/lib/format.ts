@@ -36,6 +36,7 @@ export const DECIDED_BY_LABEL: Record<string, string> = {
   rule_floor: "Hard security rule",
   url: "Dangerous link",
   allowlist: "Official domain",
+  model_cap: "URL model alert unconfirmed",
   brand_tld_cap: "Brand name on unofficial domain",
   llm: "AI analyst review",
 };

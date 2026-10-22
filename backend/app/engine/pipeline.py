@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 
 MAX_URLS = 10
 # Invalidate persisted URL verdicts when URL rules or fusion behavior changes.
-URL_CACHE_VERSION = "url-v3"
+URL_CACHE_VERSION = "url-v4"
 
 # Fallback category when Jev is unavailable: first matching rule wins
 RULE_CATEGORY = [
@@ -130,6 +130,11 @@ async def analyze(env: Envelope, deep: bool = False, use_cache: bool = True,
     urls_out = []
     for u in env.urls:
         r = _url_risk(url_rule_ev[u], local.url_scores.get(u))
+        if env.channel == "url":
+            # Show the same corroboration policy in the URL details as in the
+            # overall verdict. Embedded URLs retain the email/SMS risk policy.
+            r = fuse(url_rule_ev[u], local.url_scores.get(u),
+                     jev.p_scam if jev else None, channel="url").risk
         urls_out.append({
             "url": u,
             "domain": getattr(url_meta[u], "registered_domain", None),
@@ -146,6 +151,12 @@ async def analyze(env: Envelope, deep: bool = False, use_cache: bool = True,
         url_risk = 0.8 * max_url
     fused = fuse(evidence, local.p_local, jev.p_scam if jev else None, url_risk, channel=env.channel)
     category = _category(jev, evidence, fused.verdict)
+    if env.channel == "url" and fused.decided_by == "model_cap":
+        evidence.append(Evidence(
+            id="url.model_unconfirmed", source="model", weight=-0.01,
+            reason="The URL model's alert was not corroborated by technical phishing indicators. Page content was not inspected.",
+            detail={"p_local": local.p_local, "p_tier1": jev.p_scam if jev else None},
+        ))
     reasons, action = explain(evidence, fused.verdict, category)
     timings["fusion"] = (time.perf_counter() - t0) * 1000
 

@@ -14,13 +14,17 @@ from app.schemas import Evidence
 
 Verdict = Literal["SCAM", "SUSPICIOUS", "SAFE"]
 EPS = 0.01
-# Positive URL rules that are enough, with a model, to reach SCAM. Weaker hints such as
+# URL rules that can corroborate a model warning. Weaker hints such as
 # url.sensitive_words are not: the local URL model treats every "/login" path as phishing.
 _URL_STRONG_RULES = frozenset({
     "url.lookalike", "url.brand_in_sub", "url.ip_host", "url.punycode", "url.at_symbol",
     "url.risky_tld", "url.free_host", "url.apk", "url.shortener", "url.entropy",
     "url.brand_tld_swap",
 })
+
+
+def has_strong_url_rule(evidence: list[Evidence]) -> bool:
+    return any(e.source == "rule" and e.weight > 0 and e.id in _URL_STRONG_RULES for e in evidence)
 
 
 def clip(p: float, lo: float = EPS, hi: float = 1 - EPS) -> float:
@@ -103,17 +107,17 @@ def fuse(
         risk, decided_by = max(floors), "rule_floor"
     if url_risk is not None and url_risk > risk:
         risk, decided_by = url_risk, "url"
-    # A URL model score, without a hard rule or a confident tier-1 call, stays at most SUSPICIOUS.
-    strong_url_rule = any(
-        e.source == "rule" and e.weight > 0 and e.id in _URL_STRONG_RULES for e in evidence
-    )
+    # Familiar-looking login paths are not proof of phishing. A standalone URL
+    # classifier needs technical corroboration or a confident decision-model call
+    # before it can raise a warning, not just before it can block a page.
+    strong_url_rule = has_strong_url_rule(evidence)
     if (
         channel == "url"
         and not floors
         and not strong_url_rule
         and (p_jev is None or p_jev < settings.thresh_scam)
     ):
-        cap = settings.thresh_scam - 0.05
+        cap = max(0.0, settings.thresh_suspicious - 0.01)
         if risk > cap:
             risk, decided_by = cap, "model_cap"
 
