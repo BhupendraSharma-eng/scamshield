@@ -6,6 +6,7 @@ import { cx } from "../lib/format";
 import { useTheme } from "../lib/hooks";
 import type { Health } from "../lib/types";
 import ServerSettings from "./ServerSettings";
+import GetAppLink from "./GetAppLink";
 
 const NAV = [
   { to: "/", label: "Check", icon: ScanSearch, end: true },
@@ -78,6 +79,7 @@ export default function Layout() {
             </NavLink>
           ))}
         </nav>
+        <GetAppLink className="mt-6" />
         <div className="mt-auto flex items-center justify-between px-2">
           <StatusDot onClick={openSettings} />
           <button
@@ -93,7 +95,7 @@ export default function Layout() {
 
       <div className="flex min-h-dvh min-w-0 flex-col">
         {/* Mobile top bar */}
-        <header className="sticky top-0 z-20 flex items-center justify-between border-b border-line bg-surface/90 px-4 py-3 backdrop-blur md:hidden">
+        <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-y-3 border-b border-line bg-surface/90 px-4 py-3 backdrop-blur md:hidden">
           <div className="flex items-center gap-2">
             <Shield className="size-5 text-accent" aria-hidden />
             <span className="font-bold tracking-tight">ScamShield</span>
@@ -109,6 +111,7 @@ export default function Layout() {
               <ThemeIcon className="size-4" />
             </button>
           </div>
+          <GetAppLink className="w-full" />
         </header>
 
         <main className="mx-auto w-full min-w-0 max-w-5xl flex-1 px-4 pt-4 pb-28 sm:px-6 md:pt-8 md:pb-10">

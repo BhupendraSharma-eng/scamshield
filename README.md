@@ -142,3 +142,20 @@ and the production Pages build pass. All 400 scam SMS/emails and 100 fraud URLs 
 Before the judges: pull the final commit into the actual running checkout, rebuild `frontend`,
 restart the backend, and reload the extension and existing test tabs. Keep the backend and ngrok
 running. A GitHub Pages deployment updates the frontend only; it does not update the local API.
+
+
+## Android app download
+
+The desktop sidebar and mobile header include a **Get app** link to the versioned GitHub
+release asset `android-v1.0.0/ScamShield.apk`. Publish that release before sharing the button.
+The APK is distributed as a release attachment; APKs and signing keys are excluded from Git.
+
+To push the pending commits and publish the existing signed build, run:
+
+```bash
+bash scripts/publish-android.sh
+```
+
+The script expects `android/ScamShield.apk` (or an APK path passed as its first argument),
+uses your existing Git/GitHub CLI authentication, uploads the APK and a SHA-256 checksum,
+and stops on failure. It does not overwrite an existing release.

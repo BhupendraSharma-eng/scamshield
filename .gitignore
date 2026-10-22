@@ -7,3 +7,11 @@ __pycache__/
 .orchestra/
 .DS_Store
 eval.db
+
+# Local build outputs and Android signing material
+*.apk
+*.keystore
+android/build/
+frontend/node_modules
+frontend/dist/
+frontend/*.tsbuildinfo
