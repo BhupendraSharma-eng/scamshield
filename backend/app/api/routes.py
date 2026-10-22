@@ -8,10 +8,12 @@ from pydantic import BaseModel, Field
 
 from app import db
 from app.config import settings
+from app.engine.fusion import rules_score
 from app.engine.pipeline import analyze
 from app.parsers.email import parse_raw_email, parse_simple_email
-from app.schemas import Envelope
+from app.schemas import Envelope, Evidence
 from app.tier0.local_model import local_models
+from app.tier0.phone_rules import analyze_number, normalize
 from app.tier0.url_analyzer import extract_urls
 from app.tier1.decision_client import decision_client
 from app.tier2.auditor import auditor
@@ -117,3 +119,116 @@ async def health() -> dict[str, Any]:
         "llm": {"available": auditor.available, "provider": settings.llm_provider, "model": settings.llm_model},
         "thresholds": {"scam": settings.thresh_scam, "suspicious": settings.thresh_suspicious},
     }
+
+
+class CallRequest(BaseModel):
+    number: str = Field(default="", max_length=64)
+    transcript: str | None = Field(default=None, max_length=20_000)
+    name: str | None = Field(default=None, max_length=200)
+
+
+class NumberReportRequest(BaseModel):
+    number: str = Field(min_length=1, max_length=64)
+    note: str | None = Field(default=None, max_length=500)
+
+
+_CALL_ACTIONS = {
+    "SCAM": "Don't share OTP, PIN or card details. Hang up and call the bank/agency on its official number. Report on 1930.",
+    "SUSPICIOUS": "Be careful: never share OTP/UPI PIN on a call. Verify the caller independently.",
+    "SAFE": "No scam signs for this number. Still, never share OTP or PIN on calls.",
+}
+_SMS_SAFE_REASON = "No links, sender tricks or scam language were found."
+
+
+def _verdict_for(risk: float) -> str:
+    if risk >= settings.thresh_scam:
+        return "SCAM"
+    if risk >= settings.thresh_suspicious:
+        return "SUSPICIOUS"
+    return "SAFE"
+
+
+def _number_risk(evidence: list[Evidence]) -> float:
+    score = rules_score(evidence)
+    floors = [item.floor for item in evidence if item.floor is not None]
+    return max(score, max(floors)) if floors else score
+
+
+def _phone_reasons(evidence: list[Evidence], verdict: str) -> list[str]:
+    if verdict == "SAFE":
+        chosen = [item for item in evidence if item.reason and item.weight < 0]
+        chosen.sort(key=lambda item: item.weight)
+    else:
+        chosen = [item for item in evidence if item.reason and item.weight >= 0.3]
+        chosen.sort(
+            key=lambda item: (item.floor is not None, item.floor or 0, item.weight),
+            reverse=True,
+        )
+    reasons: list[str] = []
+    for item in chosen:
+        if item.reason not in reasons:
+            reasons.append(item.reason)
+    return reasons
+
+
+@router.post("/analyze/call")
+async def analyze_call(req: CallRequest) -> dict[str, Any]:
+    e164 = normalize(req.number)
+    reports = await db.get_report_count(e164) if e164 else 0
+    evidence, info = analyze_number(req.number, reports)
+    risk = _number_risk(evidence)
+
+    transcript = (req.transcript or "").strip()
+    scan_id: str | None = None
+    category: str | None = None
+    text_reasons: list[str] = []
+    text_evidence: list[dict[str, Any]] = []
+    if len(transcript) >= 15:
+        scanned = await analyze(Envelope(
+            channel="sms",
+            sender=req.number,
+            text=transcript,
+            urls=extract_urls(transcript),
+        ))
+        risk = max(risk, float(scanned["risk"]))
+        scan_id = scanned.get("scan_id")
+        category = scanned.get("category")
+        text_reasons = [reason for reason in scanned.get("reasons") or [] if reason and reason != _SMS_SAFE_REASON]
+        text_evidence = list(scanned.get("evidence") or [])
+
+    risk = round(risk, 4)
+    verdict = _verdict_for(risk)
+    if verdict == "SAFE":
+        category = None
+    elif not category:
+        category = "other_scam"
+
+    reasons: list[str] = []
+    if verdict != "SAFE":
+        reasons.extend(text_reasons)
+    for reason in _phone_reasons(evidence, verdict):
+        if reason not in reasons:
+            reasons.append(reason)
+
+    return {
+        "verdict": verdict,
+        "risk": risk,
+        "number": info["e164"],
+        "country": info["country"],
+        "number_type": info["type"],
+        "reports": reports,
+        "reasons": reasons[:5],
+        "action": _CALL_ACTIONS[verdict],
+        "category": category,
+        "scan_id": scan_id,
+        "evidence": [item.model_dump() for item in evidence] + text_evidence,
+    }
+
+
+@router.post("/report/number")
+async def report_number_endpoint(req: NumberReportRequest) -> dict[str, Any]:
+    e164 = normalize(req.number)
+    if not e164:
+        raise HTTPException(422, "Enter a visible phone number.")
+    count = await db.report_number(e164, req.note)
+    return {"number": e164, "reports": count}

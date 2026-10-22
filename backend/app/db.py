@@ -1,4 +1,4 @@
-"""SQLite persistence for scans (history, dashboard stats, cache)."""
+"""SQLite persistence for scans (history, dashboard stats, cache) and call-number reports."""
 
 import json
 from typing import Any
@@ -26,6 +26,12 @@ CREATE TABLE IF NOT EXISTS scans (
 );
 CREATE INDEX IF NOT EXISTS idx_scans_hash ON scans(input_hash);
 CREATE INDEX IF NOT EXISTS idx_scans_created ON scans(created_at);
+CREATE TABLE IF NOT EXISTS number_reports (
+    e164 TEXT PRIMARY KEY,
+    count INTEGER NOT NULL,
+    last_note TEXT,
+    updated_at TEXT
+);
 """
 
 
@@ -109,3 +115,31 @@ async def stats() -> dict[str, Any]:
             "by_category": await grouped("category"),
             "by_decided_by": await grouped("decided_by"),
         }
+
+
+async def report_number(e164: str, note: str | None = None) -> int:
+    """Increment the report count for an E.164 number and return the new count."""
+    async with aiosqlite.connect(settings.db_path) as db:
+        await db.execute(
+            """INSERT INTO number_reports (e164, count, last_note, updated_at)
+               VALUES (?, 1, ?, datetime('now'))
+               ON CONFLICT(e164) DO UPDATE SET
+                   count = number_reports.count + 1,
+                   last_note = COALESCE(excluded.last_note, number_reports.last_note),
+                   updated_at = datetime('now')""",
+            (e164, note),
+        )
+        cur = await db.execute("SELECT count FROM number_reports WHERE e164 = ?", (e164,))
+        row = await cur.fetchone()
+        await db.commit()
+    return int(row[0]) if row else 0
+
+
+async def get_report_count(e164: str) -> int:
+    """How many times this number has been reported. Missing numbers are 0."""
+    if not e164:
+        return 0
+    async with aiosqlite.connect(settings.db_path) as db:
+        cur = await db.execute("SELECT count FROM number_reports WHERE e164 = ?", (e164,))
+        row = await cur.fetchone()
+    return int(row[0]) if row else 0
