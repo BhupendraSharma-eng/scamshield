@@ -470,9 +470,9 @@ async def _score_chunk(
 
 
 @router.post("/call/session")
-async def create_session(req: SessionRequest | None = None) -> dict[str, str]:
+async def create_session(req: SessionRequest | None = None) -> dict[str, Any]:
     number = req.number.strip() if req and req.number else ""
-    return {"session_id": _create_session(number)}
+    return {"session_id": _create_session(number), "capabilities": {"prepared_transcription": True}}
 
 
 @router.post("/call/session/{session_id}/transcribe")

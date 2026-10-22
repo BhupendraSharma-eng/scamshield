@@ -1,6 +1,12 @@
 import { ApiError, getApiBase, TUNNEL_HEADERS } from "./api";
 import type { VerdictLabel } from "./types";
 
+export interface PreparedTranscript { text: string; latency_ms: number }
+export interface CallSession {
+  session_id: string;
+  capabilities?: { prepared_transcription?: boolean };
+}
+
 export interface CallUpdate {
   session_id: string;
   seq: number;
@@ -39,6 +45,9 @@ export async function callRequest<T>(path: string, init: RequestInit, timeoutMs 
         if (typeof body.detail === "string") message = body.detail;
         else if (Array.isArray(body.detail)) message = body.detail.map(item => item.msg ?? "Invalid request").join("; ");
       } catch { /* Keep the status-based message for non-JSON error responses. */ }
+      if (response.status === 405 && !path.endsWith("/transcribe")) {
+        message = "This server does not support the live-call endpoint. Check Server settings or update and restart the backend.";
+      }
       throw new ApiError(response.status, message);
     }
     return await response.json() as T;
@@ -62,15 +71,15 @@ const jsonPost = (body?: unknown): RequestInit => ({
 
 export const callApi = {
   createSession: (number?: string) =>
-    callRequest<{ session_id: string }>("/api/call/session", jsonPost(number?.trim() ? { number: number.trim() } : {})),
+    callRequest<CallSession>("/api/call/session", jsonPost(number?.trim() ? { number: number.trim() } : {})),
 
   transcribeChunk: (sessionId: string, file: Blob) => {
     const form = new FormData();
     form.append("file", file, "chunk.wav");
-    return callRequest<{ text: string; latency_ms: number }>(`/api/call/session/${encodeURIComponent(sessionId)}/transcribe`, { method: "POST", body: form });
+    return callRequest<PreparedTranscript>(`/api/call/session/${encodeURIComponent(sessionId)}/transcribe`, { method: "POST", body: form });
   },
 
-  sendChunk: (sessionId: string, file: Blob, seq: number, prepared?: { text: string; latency_ms: number }) => {
+  sendChunk: (sessionId: string, file: Blob, seq: number, prepared?: PreparedTranscript) => {
     const form = new FormData();
     form.append("file", file, `call-${seq}.wav`);
     form.append("seq", String(seq));
@@ -91,3 +100,28 @@ export const callApi = {
     return callRequest<{ updates: CallUpdate[] }>("/api/call/analyze-file", { method: "POST", body: form }, 180_000);
   },
 };
+
+
+/** Keep live calls working when the hosted UI is ahead of the running API. */
+export function createLiveCallTransport(session: CallSession) {
+  let canPrepare = session.capabilities?.prepared_transcription === true;
+  return {
+    async prepare(file: Blob): Promise<PreparedTranscript | undefined> {
+      if (!canPrepare) return undefined;
+      try {
+        return await callApi.transcribeChunk(session.session_id, file);
+      } catch (error) {
+        if (error instanceof ApiError && (error.status === 404 || error.status === 405)) {
+          // A stale proxy/server can advertise a feature without routing it.
+          // Retry this same audio through /chunk; subsequent chunks skip preparation.
+          canPrepare = false;
+          return undefined;
+        }
+        throw error;
+      }
+    },
+    send(file: Blob, seq: number, prepared?: PreparedTranscript) {
+      return callApi.sendChunk(session.session_id, file, seq, prepared);
+    },
+  };
+}

@@ -159,3 +159,14 @@ bash scripts/publish-android.sh
 The script expects `android/ScamShield.apk` (or an APK path passed as its first argument),
 uses your existing Git/GitHub CLI authentication, uploads the APK and a SHA-256 checksum,
 and stops on failure. It does not overwrite an existing release.
+
+
+### Live-call server compatibility
+
+Session creation advertises optional `prepared_transcription` support. New browsers use the
+original `/chunk` audio endpoint when talking to an older API. If a preparation request
+receives 404 or 405, that same audio falls back to `/chunk` and subsequent chunks skip the
+unsupported endpoint. Upgrade and restart the API to enable the faster preparation path.
+An unanalysed call does not display a SAFE/0% verdict, and a successful update clears stale
+request errors. The complete HTTP call flow and legacy/current client protocols are covered
+by regression tests without contacting external AI providers.

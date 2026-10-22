@@ -5,7 +5,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { OrderedAudioQueue } from "../lib/orderedAudioQueue";
-import { callApi, type CallUpdate } from "../lib/callApi";
+import { callApi, createLiveCallTransport, type CallUpdate, type PreparedTranscript } from "../lib/callApi";
 import { CATEGORY_LABEL, cx, ms, pct, TRIGGER_LABEL } from "../lib/format";
 import { startMicCapture, type MicCapture } from "../lib/audio";
 import { Card, ErrorNote, RichText, SectionTitle, Segmented, Spinner, toneOf, VerdictBadge } from "../components/ui";
@@ -127,7 +127,7 @@ function VoiceCard({ update }: { update: CallUpdate }) {
 function HowItWorks() {
   const steps: { icon: ReactNode; title: string; detail: string }[] = [
     { icon: <Volume2 className="size-5" />, title: "Use speakerphone", detail: "Keep the call beside this device." },
-    { icon: <Mic className="size-5" />, title: "Listen live", detail: "Audio is checked in short 4-second windows." },
+    { icon: <Mic className="size-5" />, title: "Listen live", detail: "Audio is checked in short 3-second windows." },
     { icon: <ShieldAlert className="size-5" />, title: "Get warned", detail: "Scam scripts and cloned-voice signals update live." },
   ];
   return (
@@ -165,7 +165,7 @@ export default function CallShieldPage() {
   const captureRef = useRef<MicCapture | null>(null);
   const sessionRef = useRef<string | null>(null);
   const seqRef = useRef(0);
-  const queueRef = useRef<OrderedAudioQueue<QueuedChunk, { text: string; latency_ms: number }> | null>(null);
+  const queueRef = useRef<OrderedAudioQueue<QueuedChunk, PreparedTranscript | undefined> | null>(null);
   const scamSeenRef = useRef(false);
   const stoppingRef = useRef(false);
   const startedAtRef = useRef(0);
@@ -175,6 +175,7 @@ export default function CallShieldPage() {
   const revealedRef = useRef(0);
 
   const current = updates.at(-1);
+  const hasAnalyzedSpeech = Boolean(current && current.transcript.trim().length >= 20 && current.action !== "Listening…");
   const flags = useMemo(() => [...new Set(updates.flatMap((update) => update.flags))], [updates]);
 
   const applyUpdate = useCallback((update: CallUpdate) => {
@@ -214,11 +215,15 @@ export default function CallShieldPage() {
       const session = await callApi.createSession(callerNumber);
       const sessionId = session.session_id;
       sessionRef.current = sessionId;
+      const transport = createLiveCallTransport(session);
       queueRef.current = new OrderedAudioQueue(
-        chunk => callApi.transcribeChunk(sessionId, chunk.file),
+        chunk => transport.prepare(chunk.file),
         async (chunk, prepared) => {
-          const update = await callApi.sendChunk(sessionId, chunk.file, chunk.seq, prepared);
-          if (sessionRef.current === sessionId) applyUpdate(update);
+          const update = await transport.send(chunk.file, chunk.seq, prepared);
+          if (sessionRef.current === sessionId) {
+            setError(null);
+            applyUpdate(update);
+          }
         },
         reason => setError((reason as Error).message),
       );
@@ -506,7 +511,7 @@ export default function CallShieldPage() {
 
       {error && <ErrorNote message={error} />}
 
-      {current ? (
+      {current && hasAnalyzedSpeech ? (
         <div className="grid items-start gap-4 lg:grid-cols-2">
           <div className="space-y-4">
             <Card className={cx("ring-2", toneOf(current.verdict).ring)}>
@@ -549,7 +554,7 @@ export default function CallShieldPage() {
               {updates.some((update) => update.text.trim()) ? updates.map((update, index) => update.text.trim() && (
                 <div key={`${update.seq}-${index}`} className="rounded-xl bg-surface p-3 ring-1 ring-line">
                   <div className="mb-1.5 flex items-center justify-between text-[11px] text-ink-3">
-                    <span>{formatTimer(Math.max(0, index * 4))}</span>
+                    <span>{formatTimer(Math.max(0, index * (mode === "live" ? 3 : 4)))}</span>
                     {update.flags.length > 0 && <span className="font-medium text-warn-ink">{update.flags.length} red flag{update.flags.length === 1 ? "" : "s"}</span>}
                   </div>
                   <HighlightedText text={update.text} phrases={flags} />
@@ -570,6 +575,11 @@ export default function CallShieldPage() {
             </div>
           </Card>
         </div>
+      ) : error ? (
+        <Card>
+          <p className="text-sm font-semibold text-ink">No call analysis available</p>
+          <p className="mt-1 text-sm text-ink-2">No scam-risk verdict has been produced. Resolve the connection error and start live protection again.</p>
+        </Card>
       ) : activity === "listening" || activity === "starting" || activity === "analyzing" ? (
         <Card>
           <div className="flex min-h-36 flex-col items-center justify-center gap-3 text-center">
