@@ -36,7 +36,13 @@ cd ../backend && .venv/bin/uvicorn app.main:app --port 8000   # open http://loca
 ## Hosted UI (GitHub Pages)
 
 The frontend is deployed to GitHub Pages by `.github/workflows/pages.yml`. The models and AI run in
-the backend, so the hosted UI talks to a backend you run: by default `http://localhost:8000`.
+the backend, so the hosted UI talks to a backend you run, exposed with ngrok:
+
+```bash
+ngrok http 8000 --url https://dandruff-sneer-almanac.ngrok-free.dev
+```
+
+That static ngrok domain is the hosted UI's default backend.
 Tap the status indicator (top bar) → **Server settings** to point it at another backend
 (LAN IP or an HTTPS tunnel). Chrome may ask to allow local-network access the first time.
 

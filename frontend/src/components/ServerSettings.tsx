@@ -1,6 +1,6 @@
 import { Server, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { defaultApiBase, getApiBase, setApiBase } from "../lib/api";
+import { defaultApiBase, getApiBase, setApiBase, TUNNEL_HEADERS } from "../lib/api";
 import { cx } from "../lib/format";
 import { Spinner } from "./ui";
 
@@ -27,7 +27,7 @@ export default function ServerSettings({ open, onClose }: { open: boolean; onClo
   const runTest = async () => {
     setTest({ kind: "busy" });
     try {
-      const r = await fetch(`${clean(url)}/api/health`);
+      const r = await fetch(`${clean(url)}/api/health`, { headers: TUNNEL_HEADERS });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const h = await r.json();
       setTest({ kind: "ok", detail: `Connected · decision model ${h.tier1?.model ?? "?"} (${h.tier1?.status ?? "?"})` });

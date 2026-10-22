@@ -25,6 +25,9 @@ export function setApiBase(url: string | null) {
 
 export const defaultApiBase = () => BUILD_DEFAULT;
 
+/** Skips ngrok's free-plan browser interstitial (otherwise fetch gets HTML instead of JSON). */
+export const TUNNEL_HEADERS = { "ngrok-skip-browser-warning": "1" };
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -34,7 +37,10 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${getApiBase()}${path}`, init);
+    res = await fetch(`${getApiBase()}${path}`, {
+      ...init,
+      headers: { ...TUNNEL_HEADERS, ...(init?.headers as Record<string, string> | undefined) },
+    });
   } catch {
     const where = getApiBase() || window.location.origin;
     throw new ApiError(0, `Can't reach the ScamShield server at ${where}. Start the backend or change it in Server settings.`);

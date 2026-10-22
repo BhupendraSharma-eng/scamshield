@@ -31,8 +31,9 @@ jobs:
         env:
           # Served from https://<user>.github.io/<repo>/
           VITE_BASE: /${{ github.event.repository.name }}/
-          # Default backend for the hosted UI; changeable at runtime via Server settings
-          VITE_API_BASE: http://localhost:8000
+          # Default backend for the hosted UI (ngrok static domain → backend :8000);
+          # changeable at runtime via Server settings
+          VITE_API_BASE: https://dandruff-sneer-almanac.ngrok-free.dev
         run: bun run build
       - name: SPA fallback for deep links
         run: cp dist/index.html dist/404.html
