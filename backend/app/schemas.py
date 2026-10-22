@@ -5,7 +5,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 Channel = Literal["sms", "email", "url"]
-EvidenceSource = Literal["rule", "model", "jev", "llm"]
+EvidenceSource = Literal["rule", "model", "tier1", "llm"]
 
 
 class Link(BaseModel):
@@ -32,7 +32,7 @@ class Envelope(BaseModel):
 class Evidence(BaseModel):
     """One signal. Fusion and explanation operate generically on lists of these."""
 
-    id: str                             # dotted id, e.g. "url.lookalike", "hdr.spf_fail", "txt.asks_otp"
+    id: str                             # dotted id, e.g. "url.lookalike", "hdr.spf_fail", "t1.asks_secret"
     source: EvidenceSource
     weight: float                       # -1..1; positive = suggests scam, negative = suggests safe
     floor: float | None = None          # minimum final risk if this evidence is present

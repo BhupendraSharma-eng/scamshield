@@ -1,0 +1,30 @@
+Return-Path: <bounce@mailer-77.hdfc-secure.top>
+Received: from mailer-77.hdfc-secure.top (unknown [185.234.72.19]) by mx.example.in
+Authentication-Results: mx.example.in; spf=fail smtp.mailfrom=hdfc-secure.top; dkim=none; dmarc=fail header.from=hdfc-secure.top
+From: "HDFC Bank" <alerts@hdfc-secure.top>
+Reply-To: hdfc.kyc.desk@gmail.com
+To: customer@example.in
+Subject: Urgent: Your HDFC NetBanking access is suspended
+Date: Wed, 22 Oct 2026 09:12:44 +0530
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="b1"
+
+--b1
+Content-Type: text/html; charset="utf-8"
+
+<html><body>
+<p>Dear Customer,</p>
+<p>We detected unusual activity on your account and your NetBanking access has been <b>temporarily suspended</b>.
+To restore access, complete your KYC verification within <b>24 hours</b>. Failure to do so will result in permanent account closure.</p>
+<p><a href="https://hdfc-secure.top/netbanking/verify?id=88213">www.hdfcbank.com/netbanking</a></p>
+<p>Please keep your OTP ready and share it with our verification executive when asked.</p>
+<p>Regards,<br>HDFC Bank Security Team</p>
+</body></html>
+
+--b1
+Content-Type: application/octet-stream; name="KYC_Form.pdf.html"
+Content-Disposition: attachment; filename="KYC_Form.pdf.html"
+Content-Transfer-Encoding: base64
+
+PGh0bWw+PGJvZHk+RmFrZSBsb2dpbjwvYm9keT48L2h0bWw+
+--b1--

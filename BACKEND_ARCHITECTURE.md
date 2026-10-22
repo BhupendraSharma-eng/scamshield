@@ -148,7 +148,13 @@ class Evidence(BaseModel):          # the universal signal unit
 
 ### Tier 1 — Jev (System 1 decision)
 
-- Model pinned `jev-1.13.0`, `AsyncTypeSafeClient`, created once at startup, timeout 2 s, no retry.
+> **Update:** Tier 1 is now provider-pluggable (`DECISION_PROVIDER`). Default is the **OpenAI Decisions API**
+> (`POST /v1/decisions`, `gpt-6-luna`, predicate/choice/score ≈ Jev's noul/choice/score, $0.10/M input tokens).
+> Jev via OpenRouter remains as a fallback. Questions are defined once (`tier1/questions.py`) and serialized
+> per provider; answers map to the same `DecisionResult`. The Tier 2 LLM uses the same OpenAI key.
+> Note: OpenAI makes no calibration claim (Jev's RLCD does) — tune thresholds on our labelled sets.
+
+- Model pinned `jev-1.13`, called **through OpenRouter** (`AsyncTypeSafeClient(base_url="https://openrouter.ai/api", api_key=OPENROUTER_API_KEY)`), created once at startup, timeout 2 s, no retry.
 - **State** (object, untrusted text isolated):
   ```json
   {"channel": "email", "sender": "HDFC Bank <alerts@hdfc-secure.top>", "subject": "...",
@@ -185,7 +191,7 @@ class Evidence(BaseModel):          # the universal signal unit
   ```
 - **Authority**: can resolve SUSPICIOUS → SCAM/SAFE if `confidence ≥ 0.75`; cannot lower risk below
   a hard-rule floor; quotes are verified to exist in the message (drop any that don't → anti-hallucination).
-- Provider adapter: whichever key you have (Gemini 2.5 Flash / OpenAI / Claude) — same interface.
+- Called via OpenRouter chat completions (same `OPENROUTER_API_KEY`); `LLM_MODEL` is any OpenRouter model id, default `google/gemini-2.5-flash`.
 
 ---
 
@@ -283,8 +289,8 @@ Cache key = `sha256(channel + normalized envelope)`; hit returns stored result (
 ## 11. Config (`.env`)
 
 ```text
-TYPESAFE_API_KEY=…            JEV_MODEL=jev-1.13.0     JEV_TIMEOUT_S=2
-LLM_PROVIDER=gemini|openai|anthropic   LLM_API_KEY=…   LLM_MODEL=…
+OPENROUTER_API_KEY=…   (one key: Jev via https://openrouter.ai/api/v1/systemone + LLM via chat completions)
+JEV_MODEL=jev-1.13     JEV_TIMEOUT_S=2     LLM_MODEL=google/gemini-2.5-flash
 THRESH_SCAM=0.70  THRESH_SUSPICIOUS=0.35  DISAGREE_LLM=0.5
 ```
 

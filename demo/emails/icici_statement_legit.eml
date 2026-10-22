@@ -1,0 +1,16 @@
+Return-Path: <estatement@icicibank.com>
+Authentication-Results: mx.example.in; spf=pass smtp.mailfrom=icicibank.com; dkim=pass header.d=icicibank.com; dmarc=pass header.from=icicibank.com
+From: "ICICI Bank" <estatement@icicibank.com>
+To: customer@example.in
+Subject: Your ICICI Bank e-statement for September 2026
+Date: Wed, 01 Oct 2026 08:00:00 +0530
+MIME-Version: 1.0
+Content-Type: text/html; charset="utf-8"
+
+<html><body>
+<p>Dear Customer,</p>
+<p>Your e-statement for the period 01-Sep-2026 to 30-Sep-2026 is now available. Please log in to
+<a href="https://www.icicibank.com/personal-banking">www.icicibank.com</a> or the iMobile app to view it.</p>
+<p>ICICI Bank never asks for your password, OTP or card details over email or phone.</p>
+<p>Regards,<br>ICICI Bank</p>
+</body></html>
