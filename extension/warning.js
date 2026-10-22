@@ -9,7 +9,7 @@
 
   if (verdict) {
     document.getElementById("risk").textContent = H.riskPercent(verdict.risk);
-    document.getElementById("category").textContent = verdict.category || "Scam";
+    document.getElementById("category").textContent = H.categoryLabel(verdict.category || "Scam");
     document.getElementById("action").textContent = H.stripReasonMarkup(verdict.action) || "Close this page and verify the website independently.";
     const list = document.getElementById("reasons");
     const reasons = Array.isArray(verdict.reasons) && verdict.reasons.length ? verdict.reasons : ["The destination showed strong phishing or scam indicators."];

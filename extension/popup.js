@@ -58,7 +58,7 @@
     }
     const verdict = response.verdict;
     output.className = `feedback ${verdict.verdict === "SAFE" ? "good" : verdict.verdict === "SCAM" ? "bad" : "warn"}`;
-    output.textContent = `${verdict.verdict === "SAFE" ? "✓" : "⚠"} ${titleCase(verdict.verdict)} · ${H.riskPercent(verdict.risk)}${verdict.reasons?.[0] ? " — " + verdict.reasons[0] : ""}`;
+    output.textContent = `${verdict.verdict === "SAFE" ? "✓" : "⚠"} ${titleCase(verdict.verdict)} · ${H.riskPercent(verdict.risk)} · ${H.categoryLabel(verdict.category)}${verdict.reasons?.[0] ? " — " + verdict.reasons[0] : ""}`;
   });
 
   async function initialize() {
@@ -105,7 +105,7 @@
     icon.textContent = verdict.verdict === "SAFE" ? "✓" : verdict.verdict === "SCAM" ? "!" : "?";
     label.textContent = verdict.verdict === "SAFE" ? "This page looks safe" : verdict.verdict === "SCAM" ? "Scam page blocked" : "Suspicious page";
     risk.textContent = H.riskPercent(verdict.risk);
-    category.textContent = verdict.category || (data.allowlisted ? "Trusted site" : "AI analysis complete");
+    category.textContent = verdict.category ? H.categoryLabel(verdict.category) : (data.allowlisted ? "Trusted site" : "AI analysis complete");
     (verdict.reasons || []).slice(0, 3).forEach((reason) => {
       const item = document.createElement("li");
       item.textContent = reason;

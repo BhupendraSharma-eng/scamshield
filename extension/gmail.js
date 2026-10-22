@@ -83,7 +83,7 @@
     banner.style.cssText = `all:initial;display:block;margin:0 0 14px;padding:14px 16px;border-radius:12px;background:${background};color:${color};font:14px/1.45 system-ui,-apple-system,sans-serif;box-shadow:0 4px 18px #0002;`;
     const heading = document.createElement("div");
     heading.style.cssText = "font-weight:800;font-size:15px;margin-bottom:6px";
-    heading.textContent = `${icon} ScamShield: ${titleCase(verdict.verdict)} · ${H.riskPercent(verdict.risk)}`;
+    heading.textContent = `${icon} ScamShield: ${titleCase(verdict.verdict)} · ${H.riskPercent(verdict.risk)} · ${H.categoryLabel(verdict.category)}`;
     const list = document.createElement("ul");
     list.style.cssText = "margin:5px 0 7px;padding-left:20px";
     (verdict.reasons || []).slice(0, 3).forEach((reason) => {

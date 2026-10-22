@@ -51,7 +51,7 @@ DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 if DIST.is_dir():
     app.mount("/assets", StaticFiles(directory=DIST / "assets"), name="assets")
 
-    @app.get("/{path:path}", include_in_schema=False)
+    @app.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     async def spa(path: str) -> FileResponse:
         target = (DIST / path).resolve()
         if path and target.is_file() and DIST in target.parents:

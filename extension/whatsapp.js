@@ -80,7 +80,7 @@
     pill.href = verdict.scan_id ? H.ANALYSIS_BASE + encodeURIComponent(verdict.scan_id) : H.DASHBOARD_URL;
     pill.target = "_blank";
     pill.rel = "noopener noreferrer";
-    pill.textContent = `⚠ ${isScam ? "Scam" : "Suspicious"} · ${H.riskPercent(verdict.risk)}${verdict.reasons?.[0] ? " — " + verdict.reasons[0] : ""}`;
+    pill.textContent = `⚠ ${isScam ? "Scam" : "Suspicious"} · ${H.riskPercent(verdict.risk)} · ${H.categoryLabel(verdict.category)}${verdict.reasons?.[0] ? " — " + verdict.reasons[0] : ""}`;
     pill.style.cssText = `display:block;max-width:360px;margin:5px 7px 4px;padding:5px 9px;border-radius:9px;background:${isScam ? "#D03B3B" : "#FAB219"};color:${isScam ? "#fff" : "#241a00"};font:600 12px/1.35 system-ui,-apple-system,sans-serif;text-decoration:none;box-shadow:0 2px 8px #0003;`;
     bubble.appendChild(pill);
   }

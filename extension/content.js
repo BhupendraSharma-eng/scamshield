@@ -2,15 +2,21 @@
   "use strict";
 
   const H = ScamShieldHelpers;
+  const HOVER_DELAY_MS = 300;
+  const MOUSEOUT_GRACE_MS = 1500;
+  const MIN_TOOLTIP_VISIBLE_MS = 4000;
   const checked = new Map();
   let enabled = true;
   let hoverTimer = null;
+  let hideTimer = null;
   let pendingAnchor = null;
-  let requestInFlight = false;
-  let queuedHover = null;
   let host = null;
   let shadow = null;
+  let tooltipHost = null;
+  let tooltipShadow = null;
   let tooltip = null;
+  let tooltipAnchor = null;
+  let tooltipShownAt = 0;
 
   chrome.runtime.sendMessage({ type: "GET_SETTINGS" }).then((response) => {
     enabled = response?.enabled !== false;
@@ -32,19 +38,18 @@
   document.addEventListener("mouseover", (event) => {
     if (!enabled) return;
     const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
+    if (anchor && event.relatedTarget instanceof Node && anchor.contains(event.relatedTarget)) return;
     const url = externalHttpUrl(anchor);
-    if (!url) {
-      hideTooltip();
-      return;
-    }
+    if (!url) return;
     clearTimeout(hoverTimer);
+    if (anchor === tooltipAnchor) clearTimeout(hideTimer);
     pendingAnchor = anchor;
     const known = checked.get(H.cacheKey(url.href));
     if (known) {
       renderTooltip(anchor, known);
       return;
     }
-    hoverTimer = setTimeout(() => void checkHoveredLink(anchor, url.href), 300);
+    hoverTimer = setTimeout(() => void checkHoveredLink(anchor, url.href), HOVER_DELAY_MS);
   }, true);
 
   document.addEventListener("mouseout", (event) => {
@@ -52,8 +57,8 @@
     if (!anchor) return;
     if (event.relatedTarget instanceof Node && anchor.contains(event.relatedTarget)) return;
     clearTimeout(hoverTimer);
-    pendingAnchor = null;
-    hideTooltip();
+    if (pendingAnchor === anchor) pendingAnchor = null;
+    scheduleTooltipHide();
   }, true);
 
   document.addEventListener("click", (event) => {
@@ -71,12 +76,7 @@
   }, true);
 
   async function checkHoveredLink(anchor, url) {
-    if (requestInFlight) {
-      queuedHover = { anchor, url };
-      return;
-    }
     if (anchor !== pendingAnchor || !anchor.isConnected) return;
-    requestInFlight = true;
     try {
       const response = await chrome.runtime.sendMessage({ type: "CHECK_URL", url });
       if (!response?.ok || !response.verdict) return;
@@ -84,13 +84,6 @@
       if (anchor === pendingAnchor && anchor.isConnected) renderTooltip(anchor, response.verdict);
     } catch (_) {
       // Fail open when the background worker or backend is unavailable.
-    } finally {
-      requestInFlight = false;
-      const queued = queuedHover;
-      queuedHover = null;
-      if (queued && queued.anchor === pendingAnchor && queued.anchor.isConnected) {
-        void checkHoveredLink(queued.anchor, queued.url);
-      }
     }
   }
 
@@ -120,26 +113,51 @@
     return shadow;
   }
 
+  function ensureTooltipShadow() {
+    if (tooltipShadow && tooltipHost?.isConnected) return tooltipShadow;
+    tooltipHost = document.createElement("div");
+    tooltipHost.id = "scamshield-tooltip-host";
+    tooltipHost.style.cssText = "all:initial!important;position:fixed!important;z-index:2147483647!important;top:0!important;left:0!important;max-width:calc(100vw - 16px)!important;pointer-events:none!important;";
+    document.documentElement.appendChild(tooltipHost);
+    tooltipShadow = tooltipHost.attachShadow({ mode: "open" });
+    return tooltipShadow;
+  }
+
   function renderTooltip(anchor, verdict) {
-    if (verdict.verdict === "SAFE") return hideTooltip();
-    ensureShadow();
+    if (verdict.verdict === "SAFE") return;
+    const root = ensureTooltipShadow();
+    clearTimeout(hideTimer);
     if (tooltip) tooltip.remove();
     tooltip = document.createElement("div");
     const label = verdict.verdict === "SCAM" ? "Scam link" : "Suspicious link";
     tooltip.className = `tip ${verdict.verdict.toLowerCase()}`;
-    tooltip.textContent = `⚠ ${label} · ${H.riskPercent(verdict.risk)}${verdict.reasons?.[0] ? " — " + verdict.reasons[0] : ""}`;
-    shadow.appendChild(tooltip);
+    tooltip.textContent = `⚠️ ${label} · ${H.riskPercent(verdict.risk)}${verdict.reasons?.[0] ? " — " + verdict.reasons[0] : ""}`;
+    const isScam = verdict.verdict === "SCAM";
+    tooltip.style.cssText = `box-sizing:border-box;width:max-content;max-width:min(360px,calc(100vw - 16px));padding:10px 12px;border-radius:10px;background:${isScam ? "#D03B3B" : "#FAB219"};color:${isScam ? "#fff" : "#241a00"};font:600 13px/1.35 system-ui,-apple-system,sans-serif;box-shadow:0 8px 28px #0005;overflow-wrap:anywhere;`;
+    root.appendChild(tooltip);
     const rect = anchor.getBoundingClientRect();
-    const width = Math.min(360, Math.max(220, tooltip.offsetWidth));
-    const left = Math.max(8, Math.min(innerWidth - width - 8, rect.left));
-    const top = rect.bottom + 9 + tooltip.offsetHeight < innerHeight ? rect.bottom + 9 : Math.max(8, rect.top - tooltip.offsetHeight - 9);
-    tooltip.style.left = `${left}px`;
-    tooltip.style.top = `${top}px`;
+    const tipRect = tooltip.getBoundingClientRect();
+    const left = Math.max(8, Math.min(innerWidth - tipRect.width - 8, rect.left));
+    const top = rect.bottom + 9 + tipRect.height < innerHeight ? rect.bottom + 9 : Math.max(8, rect.top - tipRect.height - 9);
+    tooltipHost.style.setProperty("left", `${left}px`, "important");
+    tooltipHost.style.setProperty("top", `${top}px`, "important");
+    tooltipAnchor = anchor;
+    tooltipShownAt = Date.now();
   }
 
   function hideTooltip() {
+    clearTimeout(hideTimer);
     if (tooltip) tooltip.remove();
     tooltip = null;
+    tooltipAnchor = null;
+    tooltipShownAt = 0;
+  }
+
+  function scheduleTooltipHide() {
+    if (!tooltip) return;
+    clearTimeout(hideTimer);
+    const minimumRemaining = Math.max(0, MIN_TOOLTIP_VISIBLE_MS - (Date.now() - tooltipShownAt));
+    hideTimer = setTimeout(hideTooltip, Math.max(MOUSEOUT_GRACE_MS, minimumRemaining));
   }
 
   function showPageBanner(verdict) {
@@ -206,7 +224,11 @@
 
   function removeUi() {
     clearTimeout(hoverTimer);
+    clearTimeout(hideTimer);
     host?.remove();
-    host = shadow = tooltip = null;
+    tooltipHost?.remove();
+    host = shadow = tooltip = tooltipAnchor = null;
+    tooltipHost = tooltipShadow = null;
+    tooltipShownAt = 0;
   }
 })();

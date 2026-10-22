@@ -5,6 +5,19 @@
   const DASHBOARD_URL = "https://bhupendrasharma-eng.github.io/scamshield/dashboard";
   const ANALYSIS_BASE = "https://bhupendrasharma-eng.github.io/scamshield/scan/";
 
+  const CATEGORY_LABELS = Object.freeze({
+    kyc_freeze: "Fake KYC / account block",
+    upi_trap: "UPI trap",
+    otp_theft: "OTP / PIN theft",
+    fake_job: "Fake job offer",
+    lottery_prize: "Prize / lottery bait",
+    impersonation: "Impersonation",
+    invoice_fraud: "Invoice / payment fraud",
+    delivery: "Fake delivery",
+    credential_phish: "Login phishing",
+    other_scam: "Other scam"
+  });
+
   const ALLOWLIST = Object.freeze([
     "google.com", "youtube.com", "youtu.be", "github.com", "wikipedia.org",
     "amazon.com", "amazon.in", "flipkart.com", "onlinesbi.sbi", "sbi.co.in",
@@ -102,6 +115,14 @@
       .trim();
   }
 
+  function categoryLabel(value) {
+    const category = stripReasonMarkup(value);
+    if (!category) return "Unknown";
+    const code = category.toLowerCase().trim();
+    if (CATEGORY_LABELS[code]) return CATEGORY_LABELS[code];
+    return code.replace(/_+/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
+  }
+
   function cleanVerdict(raw) {
     if (!raw || !["SCAM", "SUSPICIOUS", "SAFE"].includes(raw.verdict)) {
       throw new Error("Invalid verdict response");
@@ -131,9 +152,9 @@
   }
 
   const api = {
-    DEFAULT_API_BASE, DASHBOARD_URL, ANALYSIS_BASE, ALLOWLIST, normalizeBaseUrl,
+    DEFAULT_API_BASE, DASHBOARD_URL, ANALYSIS_BASE, ALLOWLIST, CATEGORY_LABELS, normalizeBaseUrl,
     parseHttpUrl, hostMatches, registeredDomain, isAllowlisted, isLocalHost, shouldSkipUrl,
-    cacheKey, stripReasonMarkup, cleanVerdict, minimalVerdict, riskPercent
+    cacheKey, stripReasonMarkup, categoryLabel, cleanVerdict, minimalVerdict, riskPercent
   };
 
   root.ScamShieldHelpers = api;
