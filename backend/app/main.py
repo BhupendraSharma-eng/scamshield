@@ -3,9 +3,12 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
 from app.db import init_db
@@ -31,3 +34,15 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="ScamShield API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.include_router(router)
+
+# Serve the built frontend (frontend/dist) at / with SPA fallback, so one server runs the whole demo.
+DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+if DIST.is_dir():
+    app.mount("/assets", StaticFiles(directory=DIST / "assets"), name="assets")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def spa(path: str) -> FileResponse:
+        target = (DIST / path).resolve()
+        if path and target.is_file() and DIST in target.parents:
+            return FileResponse(target)
+        return FileResponse(DIST / "index.html")
