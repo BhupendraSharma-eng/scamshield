@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     channel_weights: dict[str, dict[str, tuple[float, ...]]] = {
         "sms": {"online": (0.60, 0.10, 0.30), "offline": (0.25, 0.75)},
         "email": {"online": (0.45, 0.30, 0.25), "offline": (0.55, 0.45)},
-        "url": {"online": (0.35, 0.40, 0.25), "offline": (0.55, 0.45)},
+        "url": {"online": (0.45, 0.25, 0.30), "offline": (0.45, 0.55)},
     }
     allowlisted_url_cap: float = 0.15
 

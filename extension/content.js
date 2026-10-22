@@ -2,14 +2,12 @@
   "use strict";
 
   const H = ScamShieldHelpers;
-  const HOVER_DELAY_MS = 300;
   const MOUSEOUT_GRACE_MS = 1500;
   const MIN_TOOLTIP_VISIBLE_MS = 4000;
   const checked = new Map();
   let enabled = true;
-  let hoverTimer = null;
   let hideTimer = null;
-  let pendingAnchor = null;
+  let activeAnchor = null;
   let host = null;
   let shadow = null;
   let tooltipHost = null;
@@ -35,31 +33,39 @@
     }
   });
 
-  document.addEventListener("mouseover", (event) => {
+  function handleLinkEnter(event) {
     if (!enabled) return;
     const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
     if (anchor && event.relatedTarget instanceof Node && anchor.contains(event.relatedTarget)) return;
     const url = externalHttpUrl(anchor);
     if (!url) return;
-    clearTimeout(hoverTimer);
+
     if (anchor === tooltipAnchor) clearTimeout(hideTimer);
-    pendingAnchor = anchor;
+    if (anchor === activeAnchor) return;
+    activeAnchor = anchor;
+
     const known = checked.get(H.cacheKey(url.href));
     if (known) {
       renderTooltip(anchor, known);
       return;
     }
-    hoverTimer = setTimeout(() => void checkHoveredLink(anchor, url.href), HOVER_DELAY_MS);
-  }, true);
+    void checkHoveredLink(anchor, url.href);
+  }
 
-  document.addEventListener("mouseout", (event) => {
+  function handleLinkLeave(event) {
     const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
     if (!anchor) return;
     if (event.relatedTarget instanceof Node && anchor.contains(event.relatedTarget)) return;
-    clearTimeout(hoverTimer);
-    if (pendingAnchor === anchor) pendingAnchor = null;
-    scheduleTooltipHide();
-  }, true);
+    if (activeAnchor === anchor) activeAnchor = null;
+    if (tooltipAnchor === anchor) scheduleTooltipHide();
+  }
+
+  document.addEventListener("mouseover", handleLinkEnter, true);
+  document.addEventListener("pointerover", handleLinkEnter, true);
+  document.addEventListener("focusin", handleLinkEnter, true);
+  document.addEventListener("mouseout", handleLinkLeave, true);
+  document.addEventListener("pointerout", handleLinkLeave, true);
+  document.addEventListener("focusout", handleLinkLeave, true);
 
   document.addEventListener("click", (event) => {
     if (!enabled || event.defaultPrevented || event.button !== 0) return;
@@ -76,12 +82,14 @@
   }, true);
 
   async function checkHoveredLink(anchor, url) {
-    if (anchor !== pendingAnchor || !anchor.isConnected) return;
+    if (!anchor.isConnected) return;
     try {
       const response = await chrome.runtime.sendMessage({ type: "CHECK_URL", url });
-      if (!response?.ok || !response.verdict) return;
+      if (!enabled || !response?.ok || !response.verdict) return;
       checked.set(H.cacheKey(url), response.verdict);
-      if (anchor === pendingAnchor && anchor.isConnected) renderTooltip(anchor, response.verdict);
+      if (!anchor.isConnected || (activeAnchor && activeAnchor !== anchor)) return;
+      renderTooltip(anchor, response.verdict);
+      if (activeAnchor !== anchor && tooltipAnchor === anchor) scheduleTooltipHide();
     } catch (_) {
       // Fail open when the background worker or backend is unavailable.
     }
@@ -223,10 +231,10 @@
   }
 
   function removeUi() {
-    clearTimeout(hoverTimer);
     clearTimeout(hideTimer);
     host?.remove();
     tooltipHost?.remove();
+    activeAnchor = null;
     host = shadow = tooltip = tooltipAnchor = null;
     tooltipHost = tooltipShadow = null;
     tooltipShownAt = 0;

@@ -75,3 +75,66 @@ def test_extract_urls_supported_forms_and_deduplication() -> None:
 def test_extract_urls_ignores_email_domain_and_plain_words() -> None:
     text = "Email help@example.com; this sentence has no link, but docs.python.org/3/ does."
     assert extract_urls(text) == ["docs.python.org/3/"]
+
+
+def test_college_domain_is_institutional_not_a_brand_lookalike() -> None:
+    result = analyze_url("https://rntu.ac.in/")
+    ids = {item.id for item in result.evidence}
+
+    assert "url.lookalike" not in ids
+    assert "url.brand_in_sub" not in ids
+    institutional = next(item for item in result.evidence if item.id == "url.institutional")
+    assert institutional.weight == pytest.approx(-0.3)
+    assert institutional.reason == "This is a registered educational/government domain (.ac.in)."
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.iitb.ac.in/",
+        "https://csc.ernet.in/",
+        "https://erp.example.edu/login/student",
+        "https://www.incometax.gov.in/iec/foportal/",
+    ],
+)
+def test_educational_and_government_suffixes_are_institutional(url: str) -> None:
+    result = analyze_url(url)
+    assert "url.institutional" in {item.id for item in result.evidence}
+    assert "url.lookalike" not in {item.id for item in result.evidence}
+
+
+@pytest.mark.parametrize(
+    ("url", "evidence_id"),
+    [
+        ("https://www.amaz0n-in.com/gift-card/claim", "url.lookalike"),
+        ("https://verify-account.g00gle-update.cf/secure-update", "url.lookalike"),
+        ("http://support.appIe-id-verify.cc/verify", "url.lookalike"),
+        ("http://secure-login.microsft-security.top/kyc-form", "url.lookalike"),
+        ("http://support.flipkrt-deals.tk/admin", "url.lookalike"),
+        ("http://update-kyc.amzon-support.cf/admin", "url.lookalike"),
+        ("https://paypa1.com/login", "url.lookalike"),
+        ("https://hdfc-secure-verify.top/netbanking", "url.brand_in_sub"),
+    ],
+)
+def test_brand_misspellings_still_match(url: str, evidence_id: str) -> None:
+    result = analyze_url(url)
+    assert evidence_id in {item.id for item in result.evidence}
+
+
+def test_institutional_subdomain_still_flags_a_different_brand() -> None:
+    result = analyze_url("https://paypal.iitb.ac.in/login")
+    ids = {item.id for item in result.evidence}
+
+    assert "url.brand_in_sub" in ids
+    assert "url.lookalike" not in ids
+    assert "url.institutional" in ids
+
+
+def test_institutional_subdomain_does_not_flag_the_institution_itself() -> None:
+    result = analyze_url("https://sbi.onlinesbi.edu/")
+    ids = {item.id for item in result.evidence}
+
+    assert "url.brand_in_sub" not in ids
+    assert "url.lookalike" not in ids
+    assert "url.brand_tld_swap" in ids
+    assert "url.institutional" in ids

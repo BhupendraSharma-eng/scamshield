@@ -24,6 +24,8 @@ from app.tier1.decision_client import DecisionResult, decision_client
 log = logging.getLogger(__name__)
 
 MAX_URLS = 10
+# Invalidate persisted URL verdicts when URL rules or fusion behavior changes.
+URL_CACHE_VERSION = "url-v2"
 
 # Fallback category when Jev is unavailable: first matching rule wins
 RULE_CATEGORY = [
@@ -39,6 +41,8 @@ RULE_CATEGORY = [
 def input_hash(env: Envelope) -> str:
     key = "|".join([env.channel, env.sender or "", env.subject or "", env.text.strip(), ",".join(env.urls),
                     ",".join(f"{k}:{v}" for k, v in sorted(env.headers.items()))])
+    if env.channel == "url":
+        key = f"{URL_CACHE_VERSION}|{key}"
     return hashlib.sha256(key.encode()).hexdigest()
 
 

@@ -16,7 +16,8 @@ from app.schemas import Evidence
 from app.tier0.brands import BRANDS, SAFE_DOMAINS
 
 
-_EXTRACT = tldextract.TLDExtract(suffix_list_urls=())
+# ernet.in is an education-network suffix missing from the bundled public-suffix snapshot.
+_EXTRACT = tldextract.TLDExtract(suffix_list_urls=(), extra_suffixes=["ernet.in"])
 _RISKY_TLDS = {
     "xyz", "top", "tk", "ml", "ga", "cf", "gq", "click", "buzz", "rest", "club", "cc", "info",
     "cam", "icu", "sbs", "cfd", "live", "shop", "online", "site",
@@ -41,6 +42,9 @@ _URL_RE = re.compile(
     rf"(?::\d{{1,5}})?(?:/[^\s<>\"']*)?)"
 )
 _TRAILING_PUNCTUATION = ".,;:!?)]}>'\""
+_INSTITUTIONAL_SUFFIXES = frozenset({
+    "ac.in", "edu", "edu.in", "gov.in", "nic.in", "res.in", "ernet.in", "mil", "gov",
+})
 
 
 class UrlAnalysis(BaseModel):
@@ -160,6 +164,16 @@ def _brand_targets(brand: dict) -> set[str]:
     return {target for target in targets if target}
 
 
+def _lookalike_limit(target_len: int) -> int:
+    """Edit distance allowed after homoglyph normalization, by target length."""
+
+    if target_len <= 4:
+        return 0
+    if target_len <= 7:
+        return 1
+    return 2
+
+
 def _find_lookalike(first_label: str) -> tuple[str, str] | None:
     candidate = _compact(first_label)
     if not candidate:
@@ -167,18 +181,40 @@ def _find_lookalike(first_label: str) -> tuple[str, str] | None:
     normalized_candidate = _homoglyph_normalize(first_label.lower())
     for key, brand in BRANDS.items():
         for target in _brand_targets(brand):
-            # Very short aliases produce meaningless distance-two matches.
-            close = len(target) >= 3 and Levenshtein.distance(candidate, target) <= 2
+            distance = Levenshtein.distance(candidate, target)
+            # Short targets only match exactly: rn→m turned "rntu" into "mtu" ≈ "meta".
+            close = len(target) >= 3 and distance <= _lookalike_limit(len(target))
+            if distance > 0:
+                close = (
+                    close
+                    and abs(len(candidate) - len(target)) <= 2
+                    and candidate[:1] == target[:1]
+                )
             swapped = candidate == target and first_label.lower() != target
             if close or swapped or normalized_candidate == target:
                 return key, brand["domains"][0]
     return None
 
 
+def _exact_brand_key(first_label: str) -> str | None:
+    """Brand whose normalized name is exactly this registered label, if any."""
+
+    candidate = _compact(first_label)
+    raw = first_label.lower()
+    if not candidate and not raw:
+        return None
+    for key, brand in BRANDS.items():
+        targets = _brand_targets(brand)
+        if raw in targets or candidate in targets:
+            return key
+    return None
+
+
 def _find_brand_in_untrusted_location(
-    subdomain: str, first_label: str, path: str
+    subdomain: str, first_label: str, path: str, *, include_registered_label: bool = True,
 ) -> str | None:
-    searchable_parts = [part for part in (subdomain, first_label if "-" in first_label else "", unquote(path)) if part]
+    label_part = first_label if include_registered_label and "-" in first_label else ""
+    searchable_parts = [part for part in (subdomain, label_part, unquote(path)) if part]
     normalized_parts = [_homoglyph_normalize(part.lower()) for part in searchable_parts]
     compact_parts = [_compact(part) for part in searchable_parts]
     for key, brand in BRANDS.items():
@@ -206,6 +242,8 @@ def analyze_url(url: str) -> UrlAnalysis:
     path_and_query = unquote(f"{parsed.path}?{parsed.query}" if parsed.query else parsed.path)
     evidence: list[Evidence] = []
     allowlisted = registered_domain in SAFE_DOMAINS
+    institutional = suffix in _INSTITUTIONAL_SUFFIXES
+    institution_brand = _exact_brand_key(first_label) if institutional else None
 
     if "xn--" in ascii_host or any(ord(char) > 127 for char in raw_host):
         decoded = _display_host(ascii_host)
@@ -228,8 +266,9 @@ def analyze_url(url: str) -> UrlAnalysis:
 
     if not allowlisted:
         lookalike = _find_lookalike(first_label)
-        if not lookalike and "-" in first_label:
-            # Misspelled brand inside a hyphenated name: amzon-support, microsft-security, appIe-id-verify
+        # Hyphen tokens are still the registered label. Colleges keep that label;
+        # misspellings such as amzon-support are checked only off institutional suffixes.
+        if not lookalike and "-" in first_label and not institutional:
             for token in first_label.split("-"):
                 if len(token) >= 4:
                     hit = _find_lookalike(token)
@@ -239,7 +278,8 @@ def analyze_url(url: str) -> UrlAnalysis:
         if lookalike:
             brand_key, legit = lookalike
             brand_name = BRANDS[brand_key]["name"]
-            if first_label.lower() in _brand_targets(BRANDS[brand_key]):
+            exact_label = first_label.lower() in _brand_targets(BRANDS[brand_key])
+            if exact_label:
                 # Exact brand name on another ending (amazon.net, onlinesbi.edu): brands often own these
                 # defensively, so this is only a weak hint — risky TLDs and models add the rest.
                 evidence.append(_evidence(
@@ -247,14 +287,19 @@ def analyze_url(url: str) -> UrlAnalysis:
                     f"`{registered_domain}` uses the {brand_name} name, but {brand_name}'s main site is {legit} — check it's official.",
                     domain=registered_domain, brand=brand_key, legit=legit,
                 ))
-            else:
+            elif not institutional:
                 evidence.append(_evidence(
                     "url.lookalike", 0.85,
                     f"`{registered_domain}` imitates **{brand_name}** but is not {brand_name}'s real domain ({legit}).",
                     floor=0.80, domain=registered_domain, brand=brand_key, legit=legit,
                 ))
 
-        mentioned_brand = _find_brand_in_untrusted_location(subdomain, first_label, parsed.path)
+        mentioned_brand = _find_brand_in_untrusted_location(
+            subdomain, first_label, parsed.path, include_registered_label=not institutional,
+        )
+        # A college's own name in a subdomain is the institution, not a spoof of it.
+        if mentioned_brand and mentioned_brand == institution_brand:
+            mentioned_brand = None
         if mentioned_brand:
             brand_name = BRANDS[mentioned_brand]["name"]
             evidence.append(_evidence(
@@ -268,6 +313,13 @@ def analyze_url(url: str) -> UrlAnalysis:
             "url.at_symbol", 0.6,
             "The link hides its real destination after an '@' sign.",
             floor=0.70, authority=parsed.netloc,
+        ))
+
+    if suffix in _INSTITUTIONAL_SUFFIXES:
+        evidence.append(_evidence(
+            "url.institutional", -0.3,
+            f"This is a registered educational/government domain (.{suffix}).",
+            suffix=suffix,
         ))
 
     if suffix in _RISKY_TLDS:
