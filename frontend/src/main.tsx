@@ -9,6 +9,7 @@ import AnalyzePage from "./pages/AnalyzePage";
 const HistoryPage = lazy(() => import("./pages/HistoryPage"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const ScanPage = lazy(() => import("./pages/ScanPage"));
+const CallShieldPage = lazy(() => import("./pages/CallShieldPage"));
 
 const fallback = (
   <div className="flex justify-center py-16 text-ink-3">
@@ -24,6 +25,7 @@ const router = createBrowserRouter([
       { path: "/history", element: <Suspense fallback={fallback}><HistoryPage /></Suspense> },
       { path: "/scan/:id", element: <Suspense fallback={fallback}><ScanPage /></Suspense> },
       { path: "/dashboard", element: <Suspense fallback={fallback}><DashboardPage /></Suspense> },
+      { path: "/call", element: <Suspense fallback={fallback}><CallShieldPage /></Suspense> },
     ],
   },
 ], { basename: import.meta.env.BASE_URL.replace(/\/$/, "") || "/" });

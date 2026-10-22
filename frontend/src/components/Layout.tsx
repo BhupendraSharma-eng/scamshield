@@ -1,4 +1,4 @@
-import { History, LayoutDashboard, Moon, ScanSearch, Shield, Sun } from "lucide-react";
+import { History, LayoutDashboard, Moon, PhoneCall, ScanSearch, Shield, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { api } from "../lib/api";
@@ -11,6 +11,7 @@ const NAV = [
   { to: "/", label: "Check", icon: ScanSearch, end: true },
   { to: "/history", label: "History", icon: History, end: false },
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, end: false },
+  { to: "/call", label: "Call Shield", icon: PhoneCall, end: false },
 ];
 
 function StatusDot({ onClick }: { onClick: () => void }) {
@@ -115,7 +116,7 @@ export default function Layout() {
         </main>
 
         {/* Mobile bottom tabs */}
-        <nav className="safe-bottom fixed inset-x-0 bottom-0 z-20 grid grid-cols-3 border-t border-line bg-surface/95 pt-1.5 backdrop-blur md:hidden">
+        <nav className="safe-bottom fixed inset-x-0 bottom-0 z-20 grid grid-cols-4 border-t border-line bg-surface/95 pt-1.5 backdrop-blur md:hidden">
           {NAV.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}

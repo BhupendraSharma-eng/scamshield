@@ -15,6 +15,7 @@ MODELS = [
     "CrabInHoney/urlbert-tiny-v4-phishing-classifier",
     "anmolshrivastav/distilbert-scam-detector-india",
     "cybersectony/phishing-email-detection-distilbert_v2.4.1",
+    "mo-thecreator/Deepfake-audio-detection",   # voice-clone detector for Call Shield
 ]
 MODELS_DIR = Path(__file__).resolve().parents[1] / "models"
 
